@@ -182,6 +182,21 @@ describe('Pure Wallet & Economy Logic', () => {
       expect(xpRes.profile.xp).toBe(530);
       expect(xpRes.profile.credits).toBe(1300);
     });
+
+    it('pays promotion credits for EVERY level crossed when crossing several levels', () => {
+      // Start at Level 1 with 0 XP and 1000 credits.
+      // Thresholds: Level 2 at 500 XP, Level 3 at 1200 XP.
+      // Award 1300 XP -> crosses Level 2 (500*2 = 1000) AND Level 3 (500*3 = 1500).
+      // Total bonus should be 1000 + 1500 = 2500 credits.
+      const profile = createMockProfile({ credits: 1000, xp: 0 });
+      const xpRes = applyXp(profile, 1300);
+
+      expect(xpRes.leveledUp).toBe(true);
+      expect(xpRes.newLevel).toBe(3);
+      expect(xpRes.promotionCredits).toBe(2500);
+      expect(xpRes.profile.xp).toBe(1300);
+      expect(xpRes.profile.credits).toBe(3500); // 1000 + 2500
+    });
   });
 
   describe('settleRound Atomicity', () => {

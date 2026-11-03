@@ -20,6 +20,9 @@ export interface GameProps {
    * Atomic round settlement callback.
    * Atomically debits bet, credits payout, updates wins/losses/XP,
    * checks for level-ups, and prevents overdraft.
+   * NOTE: 'payout' is the TOTAL returned amount including the stake.
+   * A push/tie returns payout === bet (net = 0).
+   * A loss returns payout === 0 (net = -bet).
    */
   settle: (bet: number, payout: number) => RoundResult;
 }
@@ -94,6 +97,8 @@ Once registered:
 
 ## Economy Rules & Invariants
 
-1. **Strict Non-Negative Balance**: `settle(bet, payout)` rejects any bet where `bet > balance` or `bet <= 0`. Credits can never go negative.
-2. **Net Accounting**: Total winnings and losses are tracked strictly by net round results (`net = payout - bet`).
-3. **Atomic Progression**: XP is credited via `applyXp`, automatically awarding level promotion bonuses when thresholds are reached.
+1. **Total Payout Semantics**: `settle(bet, payout)` treats `payout` as the **TOTAL returned amount including the original stake**. A win at 2.3x returns `Math.round(bet * 2.3)`. A push returns `bet` (`payout === bet`). A loss returns `0` (`payout === 0`).
+2. **Strict Non-Negative Balance**: `settle(bet, payout)` rejects any bet where `bet > balance` or `bet <= 0`. Credits can never go negative.
+3. **Net Accounting**: Total winnings and losses are tracked strictly by net round results (`net = payout - bet`).
+4. **Resolution Guard**: Mini-games must disable their Roll/Play buttons while a round is actively rolling or resolving (using ref guards to reject rapid double-taps).
+5. **Atomic Progression**: XP is credited via `applyXp`, automatically awarding level promotion bonuses for every tier threshold crossed.

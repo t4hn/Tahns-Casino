@@ -50,21 +50,27 @@ npm run build
 │   └── images/              # Static game artwork and patron avatar assets
 ├── src/
 │   ├── components/          # Reusable UI components
-│   │   ├── BottomNav.tsx            # Mobile bottom navigation bar
+│   │   ├── CharacterCard.tsx        # Patron identity card, level progress, and XP
+│   │   ├── ConfirmResetModal.tsx    # Modal to confirm career reset
 │   │   ├── CurrencyDisplay.tsx      # Formatted virtual credit bankroll
 │   │   ├── DailyBonusCountdown.tsx  # Isolated 1-second countdown component
 │   │   ├── DailyBonusModal.tsx      # Daily allowance claim modal
-│   │   ├── Header.tsx               # Top app header with drawer trigger
-│   │   ├── NavigationDrawer.tsx     # Desktop and mobile slide-out drawer
-│   │   └── ProfileCard.tsx          # Patron identity, level, XP progress
+│   │   ├── EditProfileModal.tsx     # Patron name and avatar customizer modal
+│   │   ├── GameCard.tsx             # Casino floor game showcase & launch card
+│   │   └── Navigation.tsx           # Responsive header, desktop links, mobile bottom bar & drawer
 │   ├── context/             # Global application state
 │   │   └── CasinoContext.tsx        # useReducer state with decoupled side effects
 │   ├── data/                # Initial baseline configuration
 │   │   └── initialData.ts           # Avatars, starter settings, and achievements
 │   ├── economy/             # Pure wallet & economy engine (no React / side-effects)
 │   │   ├── wallet.ts                # applyWager, applyPayout, applyXp, settleRound
-│   │   └── wallet.test.ts           # Comprehensive Vitest test suite (14 unit tests)
+│   │   └── wallet.test.ts           # Comprehensive Vitest test suite (15 unit tests)
 │   ├── games/               # Mini-game plug-in layer
+│   │   ├── dice/                    # Dice mini-game plug-in
+│   │   │   ├── diceRules.ts         # Pure game rules, bet types, payouts, RTP
+│   │   │   ├── diceRules.test.ts    # Comprehensive test suite for dice combinations & rules
+│   │   │   ├── rng.ts               # Unbiased crypto RNG with test injection
+│   │   │   └── DiceGame.tsx         # Interactive dice table UI (implements GameProps)
 │   │   ├── registry.ts              # Game module registry and level-based table derivation
 │   │   ├── types.ts                 # CasinoGameMetadata, GameFloorItem
 │   │   └── README.md                # Guide on implementing and plugging in new games

@@ -136,7 +136,12 @@ export function applyXp(profile: WalletProfile, amount: number): XpResult {
   const nextLevelInfo = calculateLevelInfo(nextXp);
 
   const leveledUp = nextLevelInfo.level > prevLevel;
-  const promotionCredits = leveledUp ? 500 * nextLevelInfo.level : 0;
+  let promotionCredits = 0;
+  if (leveledUp) {
+    for (let lvl = prevLevel + 1; lvl <= nextLevelInfo.level; lvl++) {
+      promotionCredits += 500 * lvl;
+    }
+  }
 
   const updated: WalletProfile = {
     ...profile,
