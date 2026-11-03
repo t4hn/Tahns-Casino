@@ -66,11 +66,19 @@ npm run build
 │   │   ├── wallet.ts                # applyWager, applyPayout, applyXp, settleRound
 │   │   └── wallet.test.ts           # Comprehensive Vitest test suite (15 unit tests)
 │   ├── games/               # Mini-game plug-in layer
+│   │   ├── shared/                  # Shared game utilities
+│   │   │   ├── rng.ts               # Unbiased crypto randomInt & rollDie with rejection sampling
+│   │   │   └── betValidation.ts     # Standardized wager boundary validator
 │   │   ├── dice/                    # Dice mini-game plug-in
 │   │   │   ├── diceRules.ts         # Pure game rules, bet types, payouts, RTP
-│   │   │   ├── diceRules.test.ts    # Comprehensive test suite for dice combinations & rules
-│   │   │   ├── rng.ts               # Unbiased crypto RNG with test injection
+│   │   │   ├── diceRules.test.ts    # 17 unit/integration tests for dice combinations & rules
+│   │   │   ├── rng.ts               # Re-exports rollDie from shared RNG
 │   │   │   └── DiceGame.tsx         # Interactive dice table UI (implements GameProps)
+│   │   ├── slots/                   # Lucky Slots mini-game plug-in (3-reel, single payline)
+│   │   │   ├── slotsConfig.ts       # 20-stop reel strips, paylines, and paytable configuration
+│   │   │   ├── slotsRules.ts        # Pure window generator, line evaluator, and 8,000 combo RTP
+│   │   │   ├── slotsRules.test.ts   # 8 unit/integration tests for all 8,000 combinations
+│   │   │   └── SlotsGame.tsx        # Interactive slots machine UI (implements GameProps)
 │   │   ├── registry.ts              # Game module registry and level-based table derivation
 │   │   ├── types.ts                 # CasinoGameMetadata, GameFloorItem
 │   │   └── README.md                # Guide on implementing and plugging in new games

@@ -80,11 +80,11 @@ In `src/games/registry.ts`, register your module with the registry:
 
 ```typescript
 import { registerGameModule } from './registry';
-import { LuckySlotsGame } from './slots/LuckySlotsGame';
+import { SlotsGame } from './slots/SlotsGame';
 
 registerGameModule({
   id: 'lucky-slots',
-  component: LuckySlotsGame,
+  component: SlotsGame,
 });
 ```
 

@@ -2,8 +2,12 @@ import { GameModule } from '../types/casino';
 import { CasinoGameMetadata, GameFloorItem } from './types';
 import { calculateRtp } from './dice/diceRules';
 import { DiceGame } from './dice/DiceGame';
+import { calculateRtp as calculateSlotsRtp } from './slots/slotsRules';
+import { DEFAULT_SLOTS_CONFIG } from './slots/slotsConfig';
+import { SlotsGame } from './slots/SlotsGame';
 
 const DICE_RTP_RANGE = `${(calculateRtp('low') * 100).toFixed(1)}% - ${(calculateRtp('seven') * 100).toFixed(1)}%`;
+const SLOTS_RTP = `${(calculateSlotsRtp(DEFAULT_SLOTS_CONFIG) * 100).toFixed(1)}%`;
 
 export const DEFAULT_GAMES: CasinoGameMetadata[] = [
   {
@@ -15,7 +19,7 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     minLevel: 1,
     minBet: 10,
     maxBet: 500,
-    payoutRate: '97.4%',
+    payoutRate: SLOTS_RTP,
     volatility: 'Medium',
     featured: true,
   },
@@ -139,8 +143,14 @@ export function getGameModule(id: string): GameModule | undefined {
   return gameRegistry.getModule(id);
 }
 
-// Register the first interactive casino game module: Dice
+// Register interactive casino game modules
 registerGameModule({
   id: 'dice',
   component: DiceGame,
 });
+
+registerGameModule({
+  id: 'lucky-slots',
+  component: SlotsGame,
+});
+
