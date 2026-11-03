@@ -1,4 +1,6 @@
-import { GameItem, Achievement, ActivityItem, PlayerProfile, CasinoSettings } from '../types/casino';
+import { Achievement, ActivityItem, CasinoSettings } from '../types/casino';
+import { WalletProfile } from '../economy/wallet';
+import { gameRegistry } from '../games/registry';
 
 export const DEFAULT_CHARACTER_NAME = 'Tahn';
 export const STARTING_CREDITS = 1000;
@@ -6,20 +8,18 @@ export const STARTING_LEVEL = 1;
 export const STARTING_XP = 0;
 
 export const AVATAR_OPTIONS = [
-  { id: 'avatar_1', label: 'Tuxedo Patron', url: '/src/assets/images/character_avatar_1793671261002.jpg' },
-  { id: 'avatar_2', label: 'Emerald VIP', url: '/src/assets/images/casino_featured_game_1793671235087.jpg' },
-  { id: 'avatar_3', label: 'Card Master', url: '/src/assets/images/game_blackjack_1793671236023.jpg' },
-  { id: 'avatar_4', label: 'Dice Baron', url: '/src/assets/images/game_dice_1793671261314.jpg' },
+  { id: 'avatar_1', label: 'Tuxedo Patron', url: '/images/character_avatar_1793671261002.jpg' },
+  { id: 'avatar_2', label: 'Emerald VIP', url: '/images/casino_featured_game_1793671235087.jpg' },
+  { id: 'avatar_3', label: 'Card Master', url: '/images/game_blackjack_1793671236023.jpg' },
+  { id: 'avatar_4', label: 'Dice Baron', url: '/images/game_dice_1793671261314.jpg' },
 ];
 
-export const INITIAL_PROFILE: PlayerProfile = {
+export const INITIAL_PROFILE: WalletProfile = {
   id: 'patron_tahn_v2',
   name: DEFAULT_CHARACTER_NAME,
   avatarUrl: AVATAR_OPTIONS[0].url,
-  level: STARTING_LEVEL,
   xp: STARTING_XP,
   credits: STARTING_CREDITS,
-  title: 'Bronze Patron',
   gamesPlayed: 0,
   totalWinnings: 0,
   totalLosses: 0,
@@ -36,93 +36,7 @@ export const INITIAL_SETTINGS: CasinoSettings = {
   animations: true,
 };
 
-export const INITIAL_GAMES: GameItem[] = [
-  {
-    id: 'lucky-slots',
-    name: 'Lucky Slots',
-    category: 'Slots',
-    description: 'Emerald 3-reel luxury slot featuring classic lucky sevens, golden cherries, and progressive line multipliers.',
-    imageUrl: '/src/assets/images/game_lucky_slots_1793671235711.jpg',
-    minLevel: 1,
-    isLocked: false,
-    status: 'Table Open',
-    payoutRate: '97.4%',
-    minBet: 10,
-    maxBet: 500,
-    volatility: 'Medium',
-    featured: true,
-  },
-  {
-    id: 'blackjack',
-    name: 'Blackjack',
-    category: 'Cards',
-    description: 'Premier single-deck table. Dealer stands on all 17s; blackjack awards 3 to 2 with insurance options.',
-    imageUrl: '/src/assets/images/game_blackjack_1793671236023.jpg',
-    minLevel: 1,
-    isLocked: false,
-    status: 'Table Open',
-    payoutRate: '99.5%',
-    minBet: 25,
-    maxBet: 1000,
-    volatility: 'Low',
-  },
-  {
-    id: 'roulette',
-    name: 'Roulette',
-    category: 'Table',
-    description: 'Single zero European wheel with ivory ball, inside straight-up bets, split options, and outside dozens.',
-    imageUrl: '/src/assets/images/game_roulette_1793671260984.jpg',
-    minLevel: 1,
-    isLocked: false,
-    status: 'Table Open',
-    payoutRate: '97.3%',
-    minBet: 10,
-    maxBet: 1500,
-    volatility: 'Medium',
-  },
-  {
-    id: 'dice',
-    name: 'Dice',
-    category: 'Dice',
-    description: 'Polished translucent emerald dice duel. Wager on Hi-Lo totals, natural 7s, or roll exact doubles.',
-    imageUrl: '/src/assets/images/game_dice_1793671261314.jpg',
-    minLevel: 1,
-    isLocked: false,
-    status: 'Table Open',
-    payoutRate: '98.0%',
-    minBet: 10,
-    maxBet: 800,
-    volatility: 'Medium',
-  },
-  {
-    id: 'baccarat-vip',
-    name: 'High-Roller Baccarat',
-    category: 'Cards',
-    description: 'Private salon Punto Banco. Bet on Player, Banker, or Tie with high table limits and VIP rewards.',
-    imageUrl: '/src/assets/images/casino_featured_game_1793671235087.jpg',
-    minLevel: 4,
-    isLocked: true,
-    status: 'Requires Level 4',
-    payoutRate: '98.9%',
-    minBet: 100,
-    maxBet: 5000,
-    volatility: 'High',
-  },
-  {
-    id: 'video-poker',
-    name: 'Video Poker Deluxe',
-    category: 'Cards',
-    description: 'Jacks or Better 9/6 full paytable with instant draw decisions and royal flush bonus multipliers.',
-    imageUrl: '/src/assets/images/game_blackjack_1793671236023.jpg',
-    minLevel: 3,
-    isLocked: true,
-    status: 'Requires Level 3',
-    payoutRate: '99.2%',
-    minBet: 20,
-    maxBet: 1000,
-    volatility: 'Medium',
-  },
-];
+export const INITIAL_GAMES = gameRegistry.deriveFloorGames(STARTING_LEVEL);
 
 export const INITIAL_ACHIEVEMENTS: Achievement[] = [
   {
@@ -176,7 +90,7 @@ export const INITIAL_ACHIEVEMENTS: Achievement[] = [
   {
     id: 'floor_tour',
     title: 'Floor Explorer',
-    description: 'Visit and place a bet on all 4 main casino floor games',
+    description: 'Explore the casino floor by inspecting all 4 premier table games',
     rewardCredits: 1000,
     rewardXp: 150,
     progress: 0,

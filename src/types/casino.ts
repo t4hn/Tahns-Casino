@@ -1,36 +1,33 @@
-export interface PlayerProfile {
+import React from 'react';
+import { WalletProfile, SettleResult } from '../economy/wallet';
+import { GameFloorItem } from '../games/types';
+
+export type RoundResult = SettleResult;
+
+export interface GameProps {
+  balance: number;
+  minBet: number;
+  maxBet: number;
+  settle: (bet: number, payout: number) => RoundResult;
+}
+
+export interface GameModule {
   id: string;
-  name: string;
-  avatarUrl: string;
-  level: number;
-  xp: number;
-  credits: number;
-  title: string;
-  gamesPlayed: number;
-  totalWinnings: number;
-  totalLosses: number;
-  createdAt: number;
-  dailyStreak: number;
-  lastDailyClaim?: number;
+  component: React.FC<GameProps>;
 }
 
 export type GameCategory = 'Slots' | 'Cards' | 'Table' | 'Dice';
 
-export interface GameItem {
-  id: string;
-  name: string;
-  category: GameCategory;
-  description: string;
-  imageUrl: string;
-  minLevel: number;
-  isLocked: boolean;
-  status: string;
-  payoutRate: string;
-  minBet: number;
-  maxBet: number;
-  volatility: 'Low' | 'Medium' | 'High' | 'VIP';
-  featured?: boolean;
+/**
+ * Derived player profile for UI presentation:
+ * Level and Title are derived purely from XP.
+ */
+export interface PlayerProfile extends WalletProfile {
+  level: number;
+  title: string;
 }
+
+export type GameItem = GameFloorItem;
 
 export interface Achievement {
   id: string;
@@ -47,7 +44,16 @@ export interface Achievement {
 
 export interface ActivityItem {
   id: string;
-  type: 'daily_bonus' | 'level_up' | 'achievement' | 'game_played' | 'game_preview' | 'system';
+  type:
+    | 'daily_bonus'
+    | 'level_up'
+    | 'achievement'
+    | 'wager_placed'
+    | 'wager_won'
+    | 'wager_lost'
+    | 'game_played'
+    | 'game_preview'
+    | 'system';
   title: string;
   description: string;
   timestamp: number;

@@ -45,6 +45,12 @@ export const HomeView: React.FC = () => {
         return <TrendingUp size={14} className="text-emerald-400" />;
       case 'achievement':
         return <Award size={14} className="text-amber-300" />;
+      case 'wager_won':
+        return <TrendingUp size={14} className="text-emerald-400" />;
+      case 'wager_lost':
+        return <Zap size={14} className="text-rose-400" />;
+      case 'wager_placed':
+        return <Zap size={14} className="text-slate-400" />;
       default:
         return <Zap size={14} className="text-slate-400" />;
     }
@@ -213,9 +219,14 @@ export const HomeView: React.FC = () => {
                 </div>
 
                 <div className="text-right shrink-0">
-                  {act.creditsDelta && (
-                    <span className="font-mono text-xs font-semibold text-amber-300 block">
-                      +{act.creditsDelta.toLocaleString()} Cr
+                  {act.creditsDelta !== undefined && act.creditsDelta !== 0 && (
+                    <span
+                      className={`font-mono text-xs font-semibold block ${
+                        act.creditsDelta > 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {act.creditsDelta > 0 ? '+' : '-'}
+                      {Math.abs(act.creditsDelta).toLocaleString()} Cr
                     </span>
                   )}
                   <span className="text-[10px] text-slate-500 font-mono block">

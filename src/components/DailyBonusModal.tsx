@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Gift, Clock, Check, Calendar } from 'lucide-react';
+import { X, Sparkles, Gift, Check, Calendar } from 'lucide-react';
 import { useCasino } from '../context/CasinoContext';
 import { CurrencyDisplay } from './CurrencyDisplay';
+import { DailyBonusCountdown } from './DailyBonusCountdown';
 import { soundManager } from '../utils/sound';
 
 export const DailyBonusModal: React.FC = () => {
@@ -9,7 +10,6 @@ export const DailyBonusModal: React.FC = () => {
     isDailyBonusModalOpen,
     closeDailyBonusModal,
     isDailyBonusAvailable,
-    dailyBonusCountdown,
     claimDailyBonus,
     profile,
   } = useCasino();
@@ -96,9 +96,10 @@ export const DailyBonusModal: React.FC = () => {
         ) : (
           <div className="space-y-2">
             <div className="flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-400">
-              <Clock size={14} className="text-amber-400" />
               <span>Next allowance in:</span>
-              <span className="text-amber-300 font-bold tabular-nums">{dailyBonusCountdown}</span>
+              <span className="text-amber-300 font-bold tabular-nums">
+                <DailyBonusCountdown lastDailyClaim={profile?.lastDailyClaim} showIcon={false} />
+              </span>
             </div>
             <p className="text-[11px] text-slate-500">
               Come back tomorrow for your next patron refill!
