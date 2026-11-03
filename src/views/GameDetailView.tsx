@@ -16,25 +16,18 @@ export const GameDetailView: React.FC = () => {
   if (module?.component) {
     const GameComponent = module.component;
     return (
-      <div className="space-y-6 animate-in fade-in duration-200">
-        <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-800">
+      <div className="space-y-3 sm:space-y-4 animate-in fade-in duration-200">
+        <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
           <button
             onClick={() => {
               soundManager.playClick();
               exitGame();
             }}
-            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition-colors py-2 px-3 rounded-xl hover:bg-slate-800/60 min-h-[44px]"
+            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition-colors py-1.5 px-2.5 -ml-1 rounded-xl hover:bg-slate-800/60 min-h-[40px]"
           >
             <ArrowLeft size={16} />
             <span>Back to Casino Floor</span>
           </button>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400 uppercase font-mono hidden sm:inline">
-              Table Bankroll:
-            </span>
-            <CurrencyDisplay size="md" />
-          </div>
         </div>
 
         <GameComponent

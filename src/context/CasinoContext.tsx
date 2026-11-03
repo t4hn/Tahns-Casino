@@ -679,6 +679,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       soundManager.playClick();
       dispatch({ type: 'OPEN_GAME', payload: game.id });
+      window.scrollTo({ top: 0, behavior: 'instant' });
 
       // Track floor explorer achievement across the 4 main casino games
       const nextVisited = new Set(state.visitedGameIds);
@@ -695,6 +696,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const exitGame = useCallback(() => {
     soundManager.playClick();
     dispatch({ type: 'EXIT_GAME' });
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
   const openDailyBonusModal = useCallback(() => {

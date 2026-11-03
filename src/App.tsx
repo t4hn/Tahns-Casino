@@ -49,7 +49,7 @@ const AppContent: React.FC = () => {
       <Navigation />
 
       {/* Main Content Area */}
-      <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-28 lg:pb-14">
+      <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-6 pb-28 lg:pb-14">
         {renderView()}
       </main>
 
