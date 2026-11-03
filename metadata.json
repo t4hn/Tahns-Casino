@@ -1,0 +1,6 @@
+{
+  "name": "Tahn's Casino",
+  "description": "A premier minimalist casino game hub featuring virtual currency, character progression, and mini-games.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
