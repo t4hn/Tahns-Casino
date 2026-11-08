@@ -18,6 +18,7 @@ export interface MatchOddsResult {
 }
 
 export type AnalyticalRtpCalculator = (config: SlotsConfig) => number;
+export type MatchOddsCalculator = (config: SlotsConfig) => MatchOddsResult;
 
 export interface RuleSetDefinition {
   id: string;

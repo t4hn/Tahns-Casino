@@ -70,6 +70,12 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
   const intervalsRef = useRef<number[]>([]);
   const timeoutsRef = useRef<number[]>([]);
 
+  // Keep latest callbacks in refs so effects and timers don't depend on callback identity
+  const resolveRoundRef = useRef(resolveRound);
+  resolveRoundRef.current = resolveRound;
+  const placeBetRef = useRef(placeBet);
+  placeBetRef.current = placeBet;
+
   // Cleanup timers on unmount and resolve any pending escrow spin immediately
   useEffect(() => {
     return () => {
@@ -80,10 +86,10 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
       if (pendingResolutionRef.current) {
         const { wager: pendingWager, payout: pendingPayout } = pendingResolutionRef.current;
         pendingResolutionRef.current = null;
-        resolveRound(pendingWager, pendingPayout);
+        resolveRoundRef.current(pendingWager, pendingPayout);
       }
     };
-  }, [resolveRound]);
+  }, []);
 
   // Clamp wager if balance changes, rounded down to multiple of 10
   useEffect(() => {
@@ -141,7 +147,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     const spinEval = evaluateSpin(nextStops, wager, config);
 
     // 4. Atomically deduct wager into escrow and persist pending round with decided payout
-    const betResult = placeBet(wager, spinEval.payout);
+    const betResult = placeBetRef.current(wager, spinEval.payout);
     if (!betResult.success) {
       soundManager.playLocked();
       setErrorMsg(betResult.error || 'Failed to place wager.');
@@ -171,7 +177,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
       setReelSpinning(new Array(numReels).fill(false));
 
       pendingResolutionRef.current = null;
-      const roundRes: RoundResult = resolveRound(wager, spinEval.payout);
+      const roundRes: RoundResult = resolveRoundRef.current(wager, spinEval.payout);
 
       if (!roundRes.success) {
         setErrorMsg(roundRes.error || 'Failed to resolve spin round.');
@@ -237,7 +243,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           const pending = pendingResolutionRef.current;
           if (pending) {
             pendingResolutionRef.current = null;
-            const roundRes: RoundResult = resolveRound(pending.wager, pending.payout);
+            const roundRes: RoundResult = resolveRoundRef.current(pending.wager, pending.payout);
 
             if (!roundRes.success) {
               setErrorMsg(roundRes.error || 'Failed to resolve spin round.');

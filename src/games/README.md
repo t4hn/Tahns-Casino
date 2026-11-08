@@ -51,6 +51,20 @@ export interface GameModule {
 
 ---
 
+## Rules for Game Components
+
+1. **Never Depend on Callback Prop Identity in Effects**:
+   - Callbacks passed to game components (`placeBet`, `resolveRound`, `settle`) are recreated when parent components re-render (e.g. when state changes during bet placement).
+   - An effect whose cleanup has side effects (such as clearing timers or resolving escrow) **must never include callback props in its dependency array**. If it does, parent re-renders immediately trigger the cleanup, clearing running animation timers and leaving the UI stuck.
+2. **Keep the Latest Callbacks in Refs**:
+   - Store callback props in refs updated on every render (`resolveRoundRef.current = resolveRound; placeBetRef.current = placeBet; settleRef.current = settle;`).
+   - Timers, animation loops, and unmount cleanup handlers must invoke `ref.current(...)` to guarantee the freshest context reference is used without causing stale closures or effect restarts.
+3. **Games Must Finish a Round Even if the Parent Re-renders**:
+   - Animation cycles and delayed resolutions must proceed to completion and resolve the round smoothly regardless of intermediate re-renders from bankroll, settings, or profile changes.
+   - If the player navigates away while a round is resolving (component unmounts mid-spin), the unmount cleanup effect (with an empty dependency array `[]`) must resolve the round immediately using the predetermined payout to prevent dangling escrow or lost credits.
+
+---
+
 ## How to Add a New Game
 
 ### 1. Create Your Game Component

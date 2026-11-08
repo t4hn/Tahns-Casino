@@ -102,6 +102,10 @@ export const DiceGame: React.FC<GameProps> = ({
   const animIntervalRef = useRef<number | null>(null);
   const animTimeoutRef = useRef<number | null>(null);
 
+  // Keep latest settle callback in a ref to survive re-renders during animations
+  const settleRef = useRef(settle);
+  settleRef.current = settle;
+
   // Clean up timers on unmount
   useEffect(() => {
     return () => {
@@ -171,7 +175,7 @@ export const DiceGame: React.FC<GameProps> = ({
     if (!useAnimation) {
       // Instant settlement
       setDice([finalD1, finalD2]);
-      const roundRes = settle(wager, resolution.payout);
+      const roundRes = settleRef.current(wager, resolution.payout);
 
       if (resolution.isWin) {
         soundManager.playCoin();
@@ -208,7 +212,7 @@ export const DiceGame: React.FC<GameProps> = ({
 
       // Settle atomically once animation concludes
       setDice([finalD1, finalD2]);
-      const roundRes = settle(wager, resolution.payout);
+      const roundRes = settleRef.current(wager, resolution.payout);
 
       if (resolution.isWin) {
         soundManager.playCoin();
