@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Lock, Play, Layers } from 'lucide-react';
+import { Play, Layers, Clock } from 'lucide-react';
 import { GameItem } from '../types/casino';
 import { useCasino } from '../context/CasinoContext';
-import { soundManager } from '../utils/sound';
 
 interface GameCardProps {
   game: GameItem;
@@ -10,14 +9,13 @@ interface GameCardProps {
 }
 
 export const GameCard: React.FC<GameCardProps> = ({ game, featured = false }) => {
-  const { openGame } = useCasino();
+  const { openGame, profile } = useCasino();
   const [imageFailed, setImageFailed] = useState(false);
 
+  const isAffordable = profile ? profile.credits >= game.minBet : true;
+  const isPlayable = game.status === 'Table Open';
+
   const handlePlayClick = () => {
-    if (game.isLocked) {
-      soundManager.playLocked();
-      return;
-    }
     openGame(game);
   };
 
@@ -75,13 +73,21 @@ export const GameCard: React.FC<GameCardProps> = ({ game, featured = false }) =>
                   <span className="text-slate-500 block text-[10px] uppercase font-sans">Max Wager</span>
                   <span className="text-amber-300 font-semibold">{game.maxBet.toLocaleString()} Credits</span>
                 </div>
+                {!isAffordable && (
+                  <>
+                    <div className="h-6 w-px bg-slate-800" />
+                    <div className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-400/30 text-amber-400 font-sans text-[11px]">
+                      Min bet {game.minBet.toLocaleString()}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
             <div className="mt-5 flex items-center gap-3">
               <button
                 onClick={handlePlayClick}
-                className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all min-h-[44px]"
+                className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-[0.98] transition-all min-h-[44px] cursor-pointer"
               >
                 <Play size={15} fill="currentColor" />
                 <span>Play Now</span>
@@ -103,9 +109,7 @@ export const GameCard: React.FC<GameCardProps> = ({ game, featured = false }) =>
             alt={game.name}
             referrerPolicy="no-referrer"
             onError={() => setImageFailed(true)}
-            className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-104 ${
-              game.isLocked ? 'grayscale opacity-40 brightness-75' : ''
-            }`}
+            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-104"
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 to-slate-950 p-4">
@@ -114,18 +118,7 @@ export const GameCard: React.FC<GameCardProps> = ({ game, featured = false }) =>
           </div>
         )}
 
-        {/* Lock overlay if locked */}
-        {game.isLocked && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs p-4 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/90 border border-slate-700 text-slate-300 mb-2">
-              <Lock size={18} />
-            </div>
-            <span className="text-xs font-semibold text-slate-200">Locked</span>
-            <span className="text-[11px] text-amber-400/90 mt-0.5">Requires Level {game.minLevel}</span>
-          </div>
-        )}
-
-        {/* Unboxed category tag over image */}
+        {/* Category tag over image */}
         <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-[#0a0d12]/80 backdrop-blur-md border border-slate-800 text-[11px] font-medium text-slate-300">
           {game.category}
         </div>
@@ -148,32 +141,38 @@ export const GameCard: React.FC<GameCardProps> = ({ game, featured = false }) =>
           </p>
 
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 font-mono pt-2.5 border-t border-slate-800/80">
-            <span className={game.isLocked ? 'text-amber-400/80' : 'text-emerald-400/90'}>
-              {game.status}
-            </span>
-            <span>Limits: {game.minBet}-{game.maxBet.toLocaleString()}</span>
+            <div className="flex items-center gap-1.5 truncate mr-2">
+              <span className={isPlayable ? 'text-emerald-400/90 font-medium' : 'text-slate-400'}>
+                {game.status}
+              </span>
+              {!isAffordable && (
+                <span className="text-[10px] text-amber-400/90 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-400/25 shrink-0 font-sans">
+                  Min bet {game.minBet.toLocaleString()}
+                </span>
+              )}
+            </div>
+            <span className="shrink-0">Limits: {game.minBet}-{game.maxBet.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="mt-4 pt-1">
           <button
             onClick={handlePlayClick}
-            disabled={game.isLocked}
-            className={`w-full py-2.5 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all min-h-[44px] ${
-              game.isLocked
-                ? 'bg-slate-900/80 text-slate-600 border border-slate-800/80 cursor-not-allowed'
-                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-slate-950 active:scale-[0.98]'
+            className={`w-full py-2.5 px-4 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-all min-h-[44px] cursor-pointer ${
+              isPlayable
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500 hover:text-slate-950 active:scale-[0.98]'
+                : 'bg-slate-900 text-slate-300 border border-slate-800 hover:bg-slate-800 hover:text-white active:scale-[0.98]'
             }`}
           >
-            {game.isLocked ? (
-              <>
-                <Lock size={13} />
-                <span>Requires Lv.{game.minLevel}</span>
-              </>
-            ) : (
+            {isPlayable ? (
               <>
                 <Play size={13} fill="currentColor" />
                 <span>Play</span>
+              </>
+            ) : (
+              <>
+                <Clock size={13} className="text-amber-400/80" />
+                <span>Coming Soon</span>
               </>
             )}
           </button>

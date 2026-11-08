@@ -580,11 +580,11 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [state.profile, levelInfo]);
 
-  // ── Derived Games List based purely on Level & Registry ──
+  // ── Derived Games List from Registry ──
   // Note: Games are NEVER stored stale in localStorage!
   const derivedGames: GameItem[] = useMemo(() => {
-    return gameRegistry.deriveFloorGames(levelInfo.level);
-  }, [levelInfo.level]);
+    return gameRegistry.deriveFloorGames();
+  }, []);
 
   // ── Derived Active Game ──
   const activeGame: GameItem | null = useMemo(() => {
@@ -916,10 +916,6 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const openGame = useCallback(
     (game: GameItem) => {
-      if (game.isLocked) {
-        soundManager.playLocked();
-        return;
-      }
       soundManager.playClick();
       dispatch({ type: 'OPEN_GAME', payload: game.id });
       window.scrollTo({ top: 0, behavior: 'instant' });

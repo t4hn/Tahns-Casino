@@ -36,7 +36,7 @@ export const INITIAL_SETTINGS: CasinoSettings = {
   animations: true,
 };
 
-export const INITIAL_GAMES = gameRegistry.deriveFloorGames(STARTING_LEVEL);
+export const INITIAL_GAMES = gameRegistry.deriveFloorGames();
 
 export const INITIAL_ACHIEVEMENTS: Achievement[] = [
   {

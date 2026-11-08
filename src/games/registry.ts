@@ -19,7 +19,6 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     category: 'Slots',
     description: 'Emerald 3-reel luxury slot featuring classic lucky sevens, golden cherries, and progressive line multipliers.',
     imageUrl: '/images/game_lucky_slots_1793671235711.jpg',
-    minLevel: 1,
     minBet: 10,
     maxBet: 500,
     payoutRate: SLOTS_RTP,
@@ -32,7 +31,6 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     category: 'Cards',
     description: 'Premier single-deck table. Dealer stands on all 17s; blackjack awards 3 to 2 with insurance options.',
     imageUrl: '/images/game_blackjack_1793671236023.jpg',
-    minLevel: 1,
     minBet: 25,
     maxBet: 1000,
     payoutRate: '99.5%',
@@ -44,7 +42,6 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     category: 'Table',
     description: 'Single zero European wheel with ivory ball, inside straight-up bets, split options, and outside dozens.',
     imageUrl: '/images/game_roulette_1793671260984.jpg',
-    minLevel: 1,
     minBet: 10,
     maxBet: 1500,
     payoutRate: '97.3%',
@@ -56,7 +53,6 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     category: 'Dice',
     description: 'Polished translucent emerald dice duel. Wager on Hi-Lo totals, natural 7s, or roll exact doubles.',
     imageUrl: '/images/game_dice_1793671261314.jpg',
-    minLevel: 1,
     minBet: 10,
     maxBet: 800,
     payoutRate: DICE_RTP_RANGE,
@@ -68,7 +64,6 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     category: 'Cards',
     description: 'Private salon Punto Banco. Bet on Player, Banker, or Tie with high table limits and VIP rewards.',
     imageUrl: '/images/casino_featured_game_1793671235087.jpg',
-    minLevel: 4,
     minBet: 100,
     maxBet: 5000,
     payoutRate: '98.9%',
@@ -80,7 +75,6 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     category: 'Cards',
     description: 'Jacks or Better 9/6 full paytable with instant draw decisions and royal flush bonus multipliers.',
     imageUrl: '/images/game_blackjack_1793671236023.jpg',
-    minLevel: 3,
     minBet: 20,
     maxBet: 1000,
     payoutRate: '99.2%',
@@ -125,16 +119,18 @@ class GameRegistry {
   }
 
   /**
-   * Pure derivation of floor games based on current player level.
-   * Lock state & status are derived purely from level.
+   * Pure derivation of floor games.
+   * Games with a registered module show "Table Open".
+   * Games awaiting module plug-in show "Coming Soon".
+   * All games are open to all patrons regardless of level.
    */
-  public deriveFloorGames(playerLevel: number): GameFloorItem[] {
+  public deriveFloorGames(_playerLevel?: number): GameFloorItem[] {
     return this.getAllGames().map((game) => {
-      const isLocked = playerLevel < game.minLevel;
+      const hasModule = this.hasModule(game.id);
       return {
         ...game,
-        isLocked,
-        status: isLocked ? `Requires Level ${game.minLevel}` : 'Table Open',
+        hasPlayableModule: hasModule,
+        status: hasModule ? 'Table Open' : 'Coming Soon',
       };
     });
   }
@@ -197,7 +193,6 @@ registerSlotMachine(
     name: 'Nova Voyager',
     category: 'Slots',
     volatility: 'High',
-    minLevel: 2,
     minBet: 10,
     maxBet: 200,
     description: 'Deep space 5-reel voyage featuring 10 active paylines, roaming comet wilds, and astronomical line multipliers.',

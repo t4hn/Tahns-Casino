@@ -6,7 +6,6 @@ export interface CasinoGameMetadata {
   category: GameCategory;
   description: string;
   imageUrl: string;
-  minLevel: number;
   minBet: number;
   maxBet: number;
   payoutRate: string;
@@ -17,6 +16,6 @@ export interface CasinoGameMetadata {
 export type CasinoGamePlugin = CasinoGameMetadata;
 
 export interface GameFloorItem extends CasinoGameMetadata {
-  isLocked: boolean;
-  status: string;
+  status: 'Table Open' | 'Coming Soon' | string;
+  hasPlayableModule?: boolean;
 }

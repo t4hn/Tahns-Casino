@@ -6,10 +6,9 @@ import { GameCategory } from '../types/casino';
 import { soundManager } from '../utils/sound';
 
 export const GamesView: React.FC = () => {
-  const { games, profile } = useCasino();
+  const { games } = useCasino();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showLockedOnly, setShowLockedOnly] = useState<boolean | null>(null);
 
   const categories = ['All', 'Slots', 'Cards', 'Table', 'Dice'];
 
@@ -19,10 +18,8 @@ export const GamesView: React.FC = () => {
     const matchesSearch =
       game.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       game.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesLockState =
-      showLockedOnly === null ? true : showLockedOnly ? game.isLocked : !game.isLocked;
 
-    return matchesCategory && matchesSearch && matchesLockState;
+    return matchesCategory && matchesSearch;
   });
 
   return (
@@ -42,12 +39,6 @@ export const GamesView: React.FC = () => {
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             Select a table to inspect limits, payouts, and seat your patron avatar.
           </p>
-        </div>
-
-        {/* Level badge reminder */}
-        <div className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 flex items-center gap-2 shrink-0">
-          <span className="text-slate-500 font-mono">Your Clearance:</span>
-          <span className="text-emerald-400 font-semibold font-mono">Level {profile?.level || 1}</span>
         </div>
       </div>
 
@@ -113,7 +104,7 @@ export const GamesView: React.FC = () => {
 
       {/* Floor Notice */}
       <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-2">
-        <span>Higher level tier unlocks: Attain higher character XP to unlock the Black Tier salons.</span>
+        <span>Player Progression: Attain higher character XP to earn prestige titles and tier promotion bonuses.</span>
         <span className="font-mono text-emerald-400/90 text-[11px]">Virtual Table Gaming</span>
       </div>
     </div>

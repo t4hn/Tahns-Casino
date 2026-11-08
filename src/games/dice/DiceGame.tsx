@@ -294,6 +294,10 @@ export const DiceGame: React.FC<GameProps> = ({
               <span className="text-rose-400 font-sans text-[11px] font-medium truncate">
                 {errorMsg}
               </span>
+            ) : balance < minBet ? (
+              <span className="text-amber-400 font-sans text-[11px] font-medium">
+                You need at least {minBet} credits to play
+              </span>
             ) : (
               <span className="text-slate-500 font-sans text-[11px]">
                 Choose target & wager below to roll
@@ -301,7 +305,7 @@ export const DiceGame: React.FC<GameProps> = ({
             )}
           </div>
 
-          {/* Roll Dice Button (disabled while rolling) */}
+          {/* Roll Dice Button (disabled while rolling or if balance < minBet) */}
           <button
             type="button"
             onClick={handleRoll}
@@ -314,7 +318,9 @@ export const DiceGame: React.FC<GameProps> = ({
           >
             <Dices size={18} className={isRolling ? 'animate-spin shrink-0' : 'shrink-0'} />
             <span className="truncate">
-              {isRolling
+              {balance < minBet
+                ? `You need at least ${minBet} credits to play`
+                : isRolling
                 ? 'Rolling Dice...'
                 : `Roll Dice · ${selectedOption.label} · ${wager.toLocaleString()} Credits`}
             </span>
