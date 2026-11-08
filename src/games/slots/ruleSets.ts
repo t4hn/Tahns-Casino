@@ -12,6 +12,11 @@ export type LineEvaluator = (
   config: SlotsConfig
 ) => LineEvaluationResult;
 
+export interface MatchOddsResult {
+  totalOutcomesPerLine: number;
+  hitsByMatch: Record<string, number>;
+}
+
 export type AnalyticalRtpCalculator = (config: SlotsConfig) => number;
 
 export interface RuleSetDefinition {
@@ -19,6 +24,7 @@ export interface RuleSetDefinition {
   name: string;
   evaluateLine: LineEvaluator;
   calculateAnalyticalRtp?: AnalyticalRtpCalculator;
+  calculateMatchOdds?: MatchOddsCalculator;
 }
 
 const ruleSets: Map<string, RuleSetDefinition> = new Map();
@@ -98,17 +104,17 @@ export const classicCherry3ReelEvaluator: LineEvaluator = (symbolsOnLine, config
 };
 
 /**
- * Fast analytical RTP calculation for classic 3-reel cherry machine.
- * Computes exact return without enumerating all reel permutations.
+ * Exact analytical match frequencies for 1 payline of the classic 3-reel cherry machine.
+ * Computes exact count of equally likely outcomes producing each paytable match.
  */
-export const classicCherry3ReelAnalyticalRtp: AnalyticalRtpCalculator = (config) => {
+export const classicCherry3ReelMatchOdds: MatchOddsCalculator = (config) => {
   const numReels = config.reelStrips.length;
-  if (numReels < 3) return 0;
+  if (numReels < 3) return { totalOutcomesPerLine: 0, hitsByMatch: {} };
 
   const len0 = config.reelStrips[0].length;
   const len1 = config.reelStrips[1].length;
   const len2 = config.reelStrips[2].length;
-  const totalOutcomes = len0 * len1 * len2;
+  const totalOutcomesPerLine = len0 * len1 * len2;
 
   const countSym = (reelIdx: number, sym: SymbolId) =>
     config.reelStrips[reelIdx].filter((s) => s === sym).length;
@@ -120,9 +126,6 @@ export const classicCherry3ReelAnalyticalRtp: AnalyticalRtpCalculator = (config)
   const nc0 = len0 - c0;
   const nc1 = len1 - c1;
   const nc2 = len2 - c2;
-
-  // Paytable lookup
-  const getMult = (id: string) => config.paytable.find((p) => p.id === id)?.multiplier || 0;
 
   // 3 of a kind frequencies
   const hits7 = countSym(0, 'seven') * countSym(1, 'seven') * countSym(2, 'seven');
@@ -137,16 +140,40 @@ export const classicCherry3ReelAnalyticalRtp: AnalyticalRtpCalculator = (config)
   // Exactly 1 cherry on reel 1 (index 0)
   const hits1CherryReel1 = c0 * nc1 * nc2;
 
-  const totalReturn =
-    hits7 * getMult('three_sevens') +
-    hitsEmerald * getMult('three_emeralds') +
-    hitsBar * getMult('three_bars') +
-    hitsBell * getMult('three_bells') +
-    hitsCherry * getMult('three_cherries') +
-    hits2Cherries * getMult('two_cherries') +
-    hits1CherryReel1 * getMult('one_cherry_reel_1');
+  const hitsByMatch: Record<string, number> = {
+    three_sevens: hits7,
+    three_emeralds: hitsEmerald,
+    three_bars: hitsBar,
+    three_bells: hitsBell,
+    three_cherries: hitsCherry,
+    two_cherries: hits2Cherries,
+    one_cherry_reel_1: hits1CherryReel1,
+  };
 
-  return totalReturn / totalOutcomes;
+  const payingHits = hits7 + hitsEmerald + hitsBar + hitsBell + hitsCherry + hits2Cherries + hits1CherryReel1;
+  hitsByMatch['no_win'] = totalOutcomesPerLine - payingHits;
+
+  return {
+    totalOutcomesPerLine,
+    hitsByMatch,
+  };
+};
+
+/**
+ * Fast analytical RTP calculation for classic 3-reel cherry machine.
+ * Computes exact return without enumerating all reel permutations.
+ */
+export const classicCherry3ReelAnalyticalRtp: AnalyticalRtpCalculator = (config) => {
+  const odds = classicCherry3ReelMatchOdds(config);
+  if (odds.totalOutcomesPerLine === 0) return 0;
+
+  let totalReturn = 0;
+  for (const item of config.paytable) {
+    const hits = odds.hitsByMatch[item.id] || 0;
+    totalReturn += hits * item.multiplier;
+  }
+
+  return totalReturn / odds.totalOutcomesPerLine;
 };
 
 // Register default classic rule set
@@ -155,6 +182,7 @@ registerRuleSet({
   name: 'Classic Cherry 3-Reel',
   evaluateLine: classicCherry3ReelEvaluator,
   calculateAnalyticalRtp: classicCherry3ReelAnalyticalRtp,
+  calculateMatchOdds: classicCherry3ReelMatchOdds,
 });
 
 export function registerRuleSet(def: RuleSetDefinition): void {

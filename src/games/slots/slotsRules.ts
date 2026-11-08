@@ -14,7 +14,10 @@ import {
   getRuleSet,
   classicCherry3ReelEvaluator,
   classicCherry3ReelAnalyticalRtp,
+  MatchOddsResult,
 } from './ruleSets';
+
+export type { MatchOddsResult };
 
 export interface LineEvaluation {
   paylineIndex: number;
@@ -47,7 +50,16 @@ export interface HitStats {
   hitFrequency: number;
   profitFrequency: number;
   hitsByMatch: Record<string, number>;
+  spinsWithAnyWin: number;
+  spinsReturningMoreThanBet: number;
+  maxMultiplier: number;
 }
+
+export interface EnumerationOptions {
+  allowLarge?: boolean;
+}
+
+export const MAX_ENUMERATION_SPINS = 200_000;
 
 /**
  * Derives the visible symbols in the slot window from the chosen reel stops.
@@ -90,6 +102,66 @@ export function evaluateLine(
   const evaluator = ruleSetDef ? ruleSetDef.evaluateLine : classicCherry3ReelEvaluator;
 
   return evaluator(symbolsOnLine, config);
+}
+
+/**
+ * Lean internal evaluator for high-throughput enumeration and testing.
+ * Computes exact same payout, totalMultiplier, won, isProfit, and matchIds as evaluateSpin
+ * without allocating 2D window matrices or diagnostic objects for every spin.
+ */
+export interface LeanSpinResult {
+  totalMultiplier: number;
+  payout: number;
+  matchIds: string[];
+  won: boolean;
+  isProfit: boolean;
+}
+
+export function evaluateSpinFast(
+  stops: number[],
+  bet: number,
+  config: SlotsConfig = DEFAULT_SLOTS_CONFIG
+): LeanSpinResult {
+  const { reelStrips, paylines } = config;
+  const stopsLengths = getStopsPerReel(config);
+  const numReels = reelStrips.length;
+  const numPaylines = Math.max(1, paylines.length);
+  const betPerLine = Math.max(1, Math.floor(bet / numPaylines));
+
+  const ruleSetId = config.ruleSet || 'classic-cherry-3reel';
+  const ruleSetDef = getRuleSet(ruleSetId);
+  const evaluator = ruleSetDef ? ruleSetDef.evaluateLine : classicCherry3ReelEvaluator;
+
+  let totalMultiplier = 0;
+  let totalPayout = 0;
+  const matchIds: string[] = [];
+
+  const lineSymbols: SymbolId[] = new Array(numReels);
+
+  for (let p = 0; p < paylines.length; p++) {
+    const payline = paylines[p];
+    for (let r = 0; r < numReels; r++) {
+      const rowIdx = payline.rows[r];
+      const offset = rowIdx - 1;
+      const reelLen = stopsLengths[r] || reelStrips[r].length;
+      const idx = (stops[r] + offset + reelLen) % reelLen;
+      lineSymbols[r] = reelStrips[r][idx];
+    }
+
+    const lineEval = evaluator(lineSymbols, config);
+    totalMultiplier += lineEval.multiplier;
+    const linePayout = Math.round(betPerLine * lineEval.multiplier);
+    totalPayout += linePayout;
+    matchIds.push(lineEval.matchId);
+  }
+
+  return {
+    totalMultiplier,
+    payout: totalPayout,
+    matchIds,
+    won: totalPayout > 0,
+    isProfit: totalPayout > bet,
+  };
 }
 
 /**
@@ -167,21 +239,43 @@ export function calculateAnalyticalRtp(config: SlotsConfig = DEFAULT_SLOTS_CONFI
 }
 
 /**
+ * Fast analytical match odds calculation per single payline.
+ * Returns exact outcome counts producing each paytable match without spin enumeration.
+ */
+export function calculateMatchOdds(
+  config: SlotsConfig = DEFAULT_SLOTS_CONFIG
+): MatchOddsResult | undefined {
+  const ruleSetId = config.ruleSet || 'classic-cherry-3reel';
+  const ruleSetDef = getRuleSet(ruleSetId);
+  return ruleSetDef?.calculateMatchOdds ? ruleSetDef.calculateMatchOdds(config) : undefined;
+}
+
+/**
  * Calculates theoretical Return to Player (RTP) by exhaustively enumerating
  * all equally likely combinations generically across any reel count and stop lengths.
+ * Includes a safety limit of 200,000 spins unless { allowLarge: true } is provided.
  */
-export function calculateRtp(config: SlotsConfig = DEFAULT_SLOTS_CONFIG): number {
+export function calculateRtp(
+  config: SlotsConfig = DEFAULT_SLOTS_CONFIG,
+  options?: EnumerationOptions
+): number {
   const stopsLengths = getStopsPerReel(config);
   const numReels = config.reelStrips.length;
   const totalOutcomes = stopsLengths.reduce((acc, len) => acc * len, 1);
 
   if (totalOutcomes === 0) return 0;
 
+  if (totalOutcomes > MAX_ENUMERATION_SPINS && !options?.allowLarge) {
+    throw new Error(
+      `Total spins (${totalOutcomes.toLocaleString()}) exceeds safety limit of ${MAX_ENUMERATION_SPINS.toLocaleString()}. Pass { allowLarge: true } if intentional.`
+    );
+  }
+
   let totalReturn = 0;
   const currentStops = new Array(numReels).fill(0);
 
   for (let i = 0; i < totalOutcomes; i++) {
-    const spin = evaluateSpin([...currentStops], 100, config);
+    const spin = evaluateSpinFast(currentStops, 100, config);
     totalReturn += spin.payout;
 
     // Advance odometer
@@ -199,17 +293,28 @@ export function calculateRtp(config: SlotsConfig = DEFAULT_SLOTS_CONFIG): number
 
 /**
  * Calculates hit statistics across all combinations generically for any reel count:
- * - Hit frequency (any return >= 1x)
- * - Profit frequency (returns > 1x)
- * - Counts per paytable match ID
+ * - Counts match on EVERY payline for hitsByMatch
+ * - Returns spinsWithAnyWin, spinsReturningMoreThanBet, and maxMultiplier
+ * - Preserves totalHits and totalProfits matching single-line counts
+ * Includes a safety limit of 200,000 spins unless { allowLarge: true } is provided.
  */
-export function calculateHitStats(config: SlotsConfig = DEFAULT_SLOTS_CONFIG): HitStats {
+export function calculateHitStats(
+  config: SlotsConfig = DEFAULT_SLOTS_CONFIG,
+  options?: EnumerationOptions
+): HitStats {
   const stopsLengths = getStopsPerReel(config);
   const numReels = config.reelStrips.length;
   const totalSpins = stopsLengths.reduce((acc, len) => acc * len, 1);
 
-  let totalHits = 0;
-  let totalProfits = 0;
+  if (totalSpins > MAX_ENUMERATION_SPINS && !options?.allowLarge) {
+    throw new Error(
+      `Total spins (${totalSpins.toLocaleString()}) exceeds safety limit of ${MAX_ENUMERATION_SPINS.toLocaleString()}. Pass { allowLarge: true } if intentional.`
+    );
+  }
+
+  let spinsWithAnyWin = 0;
+  let spinsReturningMoreThanBet = 0;
+  let maxMultiplier = 0;
   const hitsByMatch: Record<string, number> = {};
 
   config.paytable.forEach((item) => {
@@ -220,18 +325,22 @@ export function calculateHitStats(config: SlotsConfig = DEFAULT_SLOTS_CONFIG): H
   const currentStops = new Array(numReels).fill(0);
 
   for (let i = 0; i < totalSpins; i++) {
-    const spin = evaluateSpin([...currentStops], 100, config);
-    const line = spin.lines[0];
+    const spin = evaluateSpinFast(currentStops, 100, config);
 
-    if (line) {
-      hitsByMatch[line.matchId] = (hitsByMatch[line.matchId] || 0) + 1;
+    // Count the match on EVERY payline
+    for (let m = 0; m < spin.matchIds.length; m++) {
+      const matchId = spin.matchIds[m];
+      hitsByMatch[matchId] = (hitsByMatch[matchId] || 0) + 1;
     }
 
     if (spin.won) {
-      totalHits++;
+      spinsWithAnyWin++;
     }
     if (spin.isProfit) {
-      totalProfits++;
+      spinsReturningMoreThanBet++;
+    }
+    if (spin.totalMultiplier > maxMultiplier) {
+      maxMultiplier = spin.totalMultiplier;
     }
 
     // Advance odometer
@@ -246,10 +355,13 @@ export function calculateHitStats(config: SlotsConfig = DEFAULT_SLOTS_CONFIG): H
 
   return {
     totalSpins,
-    totalHits,
-    totalProfits,
-    hitFrequency: totalSpins > 0 ? totalHits / totalSpins : 0,
-    profitFrequency: totalSpins > 0 ? totalProfits / totalSpins : 0,
+    totalHits: spinsWithAnyWin,
+    totalProfits: spinsReturningMoreThanBet,
+    hitFrequency: totalSpins > 0 ? spinsWithAnyWin / totalSpins : 0,
+    profitFrequency: totalSpins > 0 ? spinsReturningMoreThanBet / totalSpins : 0,
     hitsByMatch,
+    spinsWithAnyWin,
+    spinsReturningMoreThanBet,
+    maxMultiplier,
   };
 }

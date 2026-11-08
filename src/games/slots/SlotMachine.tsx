@@ -7,8 +7,8 @@ import {
 import {
   evaluateSpin,
   getWindow,
-  calculateRtp,
-  calculateHitStats,
+  calculateAnalyticalRtp,
+  calculateMatchOdds,
   SpinEvaluation,
 } from './slotsRules';
 import { SlotSymbolIcon } from './symbols/SlotSymbolIcon';
@@ -92,14 +92,14 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     }
   }, [balance, minBet, wager]);
 
-  // Derived theoretical RTP for paytable display
+  // Derived theoretical RTP for paytable display (fast analytical calculation, never full enumeration at runtime)
   const rtpPercent = useMemo(() => {
-    return (calculateRtp(config) * 100).toFixed(1);
+    return (calculateAnalyticalRtp(config) * 100).toFixed(1);
   }, [config]);
 
-  // Dynamic hit stats calculated directly from config
-  const hitStats = useMemo(() => {
-    return calculateHitStats(config);
+  // Analytical match odds per single payline (if provided by rule set)
+  const matchOdds = useMemo(() => {
+    return calculateMatchOdds(config);
   }, [config]);
 
   // Derive visible window symbols from current stops
@@ -464,9 +464,14 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
         <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-2 text-[11px]">
           <div className="grid grid-cols-1 gap-1.5">
             {config.paytable.map((item) => {
-              const hits = hitStats.hitsByMatch[item.id] || 0;
-              const oneInN = hits > 0 ? Math.round(hitStats.totalSpins / hits) : 0;
-              const oddsPercent = ((hits / hitStats.totalSpins) * 100).toFixed(hits < 10 ? 2 : 1);
+              const hits = matchOdds?.hitsByMatch[item.id];
+              const totalOutcomes = matchOdds?.totalOutcomesPerLine || 0;
+              const hasOdds = typeof hits === 'number' && totalOutcomes > 0;
+              const oneInN = hasOdds && hits > 0 ? Math.round(totalOutcomes / hits) : 0;
+              const oddsPercent = hasOdds && hits > 0
+                ? ((hits / totalOutcomes) * 100).toFixed(hits < 10 ? 2 : 1)
+                : '0.0';
+
               return (
                 <div
                   key={item.id}
@@ -480,9 +485,11 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
                     <span className="font-mono font-bold text-amber-300 text-xs block">
                       {item.multiplier}x
                     </span>
-                    <span className="font-mono text-[10px] text-slate-500">
-                      {hits}/{hitStats.totalSpins.toLocaleString()} (1 in {oneInN.toLocaleString()} · {oddsPercent}%)
-                    </span>
+                    {hasOdds && (
+                      <span className="font-mono text-[10px] text-slate-500">
+                        {hits}/{totalOutcomes.toLocaleString()} (1 in {oneInN.toLocaleString()} · {oddsPercent}%)
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -490,7 +497,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           </div>
 
           <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
-            <span>Payline: Center row only</span>
+            <span>Payline: Center row only (per line odds)</span>
             <span>Target RTP: {rtpPercent}%</span>
           </div>
         </div>

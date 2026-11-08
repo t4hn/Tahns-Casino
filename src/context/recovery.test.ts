@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolveRound as resolveRoundPure, placeBet as placeBetPure, WalletProfile } from '../economy/wallet';
+import { placeBet as placeBetPure, WalletProfile } from '../economy/wallet';
+import {
+  recoverInterruptedRound,
+  PendingRound,
+} from './CasinoContext';
+import { INITIAL_ACHIEVEMENTS } from '../data/initialData';
+import { Achievement, ActivityItem } from '../types/casino';
 
 const STORAGE_KEY = 'tahns_casino_v2';
 
@@ -18,13 +24,18 @@ const createMockProfile = (overrides: Partial<WalletProfile> = {}): WalletProfil
 });
 
 /**
- * Emulates the app initialization recovery logic from CasinoContext loadInitialState()
+ * Emulates app initialization and recovery:
+ * 1. Computes recovered state purely via recoverInterruptedRound
+ * 2. Simulates mount persistence effect (storage.removeItem('pending_round') and storage updates)
  */
 function emulateAppInit(storage: Storage): {
   profile: WalletProfile | null;
   recoveredActivity: boolean;
+  achievements: Achievement[];
 } {
   let profile: WalletProfile | null = null;
+  let achievements: Achievement[] = INITIAL_ACHIEVEMENTS;
+  let activities: ActivityItem[] = [];
   let recoveredActivity = false;
 
   const savedProfile = storage.getItem(`${STORAGE_KEY}_profile`);
@@ -32,33 +43,29 @@ function emulateAppInit(storage: Storage): {
     profile = JSON.parse(savedProfile);
   }
 
-  const savedPending = storage.getItem(`${STORAGE_KEY}_pending_round`);
-  if (savedPending && profile) {
-    const pending = JSON.parse(savedPending) as {
-      gameId: string;
-      gameName: string;
-      bet: number;
-      payout?: number;
-      timestamp: number;
-    };
-
-    // Guard: Clear pending record immediately to prevent double-crediting
-    storage.removeItem(`${STORAGE_KEY}_pending_round`);
-
-    const recoveryPayout = typeof pending.payout === 'number' ? pending.payout : 0;
-    const { profile: updatedProfile } = resolveRoundPure(
-      profile,
-      pending.bet,
-      recoveryPayout
-    );
-    profile = updatedProfile;
-
-    // Persist recovered profile immediately
-    storage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(profile));
-    recoveredActivity = true;
+  const savedAchievements = storage.getItem(`${STORAGE_KEY}_achievements`);
+  if (savedAchievements) {
+    achievements = JSON.parse(savedAchievements);
   }
 
-  return { profile, recoveredActivity };
+  const savedPending = storage.getItem(`${STORAGE_KEY}_pending_round`);
+  if (savedPending && profile) {
+    const pending = JSON.parse(savedPending) as PendingRound;
+
+    // Pure state derivation
+    const recovery = recoverInterruptedRound(profile, achievements, activities, pending);
+    profile = recovery.profile;
+    achievements = recovery.achievements;
+    activities = recovery.activities;
+    recoveredActivity = recovery.recovered;
+
+    // Effect step: clean up storage and persist recovered profile & achievements
+    storage.removeItem(`${STORAGE_KEY}_pending_round`);
+    storage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(profile));
+    storage.setItem(`${STORAGE_KEY}_achievements`, JSON.stringify(achievements));
+  }
+
+  return { profile, recoveredActivity, achievements };
 }
 
 class MemoryStorage implements Storage {
@@ -194,9 +201,8 @@ describe('Round-in-Progress Interruption & Crash Recovery', () => {
     expect(localStorage.getItem(`${STORAGE_KEY}_pending_round`)).not.toBeNull();
 
     // Simulate resolveRound
-    const resolveRes = resolveRoundPure(betRes.profile, bet, payout);
     localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
-    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(resolveRes.profile));
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
 
     // Verify localStorage has no pending round
     expect(localStorage.getItem(`${STORAGE_KEY}_pending_round`)).toBeNull();
@@ -204,6 +210,45 @@ describe('Round-in-Progress Interruption & Crash Recovery', () => {
     // Subsequent reload does not trigger recovery
     const init = emulateAppInit(localStorage);
     expect(init.recoveredActivity).toBe(false);
-    expect(init.profile!.credits).toBe(1020);
+  });
+
+  it('updates achievement progress (first_wager, high_roller, level_two) when recovering an interrupted round', () => {
+    // 1. Initial profile with 1,000 credits, 150 xp, and untouched initial achievements
+    const initialProfile = createMockProfile({ credits: 1000, xp: 150, gamesPlayed: 0 });
+    const bet = 50;
+    const payout = 250; // Win: 50 * 5 = 250, net = +200, XP gained = 15
+
+    const betRes = placeBetPure(initialProfile, bet);
+    expect(betRes.profile.credits).toBe(950);
+
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
+    localStorage.setItem(`${STORAGE_KEY}_achievements`, JSON.stringify(INITIAL_ACHIEVEMENTS));
+    localStorage.setItem(
+      `${STORAGE_KEY}_pending_round`,
+      JSON.stringify({
+        gameId: 'lucky-slots',
+        gameName: 'Lucky Slots',
+        bet,
+        payout,
+        timestamp: Date.now(),
+      })
+    );
+
+    // 2. App reloads and executes recovery
+    const init = emulateAppInit(localStorage);
+    expect(init.recoveredActivity).toBe(true);
+    expect(init.profile!.credits).toBe(1200); // 950 + 250
+    expect(init.profile!.xp).toBe(170); // 150 + 20 (10 base + 10 win bonus)
+
+    // Check achievement progress
+    const firstWagerAch = init.achievements.find((a) => a.id === 'first_wager');
+    expect(firstWagerAch?.progress).toBe(1);
+    expect(firstWagerAch?.unlocked).toBe(true);
+
+    const highRollerAch = init.achievements.find((a) => a.id === 'high_roller');
+    expect(highRollerAch?.progress).toBe(1200);
+
+    const levelTwoAch = init.achievements.find((a) => a.id === 'level_two');
+    expect(levelTwoAch?.progress).toBe(170);
   });
 });

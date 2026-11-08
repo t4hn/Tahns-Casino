@@ -167,8 +167,14 @@ registerRuleSet({
   calculateAnalyticalRtp: (config) => {
     // Optional fast analytical RTP calculation without permutation enumeration
   },
+  calculateMatchOdds: (config) => {
+    // Optional per-line match outcome counts for the paytable
+  },
 });
 ```
+
+### Enumeration Safety Limit
+`calculateRtp` and `calculateHitStats` include a strict safety cap of 200,000 spins. If called on larger machines (e.g., 5 reels x 24 stops = 7.9M spins) without `{ allowLarge: true }`, they throw an explicit error to prevent accidental browser/server freezing. Runtime code (`registry.ts`, `SlotMachine.tsx`) uses `calculateAnalyticalRtp` and `calculateMatchOdds` instead of full enumeration.
 
 ---
 
@@ -180,5 +186,5 @@ registerRuleSet({
 4. **Resolution Guard**: Mini-games must disable their Roll/Play buttons while a round is actively rolling or resolving (using ref guards to reject rapid double-taps).
 5. **Atomic Progression**: XP is credited via `applyXp`, automatically awarding level promotion bonuses for every tier threshold crossed.
 6. **Escrow & Mid-Spin Unmount Resolution**: Games with animations must place the wager into escrow via `placeBet(bet, predeterminedPayout?)` before starting animations. If the player leaves the game before the animation concludes, the component's unmount cleanup handler immediately invokes `resolveRound(wager, payout)` with the predetermined outcome so credits are never lost or left in dangling escrow.
-7. **Round-in-Progress Crash & Interruption Recovery**: When `placeBet(gameId, gameName, bet, payout?)` is called, the round is atomically persisted to `localStorage` (`tahns_casino_v2_pending_round`). If the user refreshes, closes the tab, or crashes mid-spin, `CasinoContext` detects the interrupted round on initialization, settles it using the saved outcome (or as a completed round if payout was undetermined), logs an `"Interrupted round recovered"` activity item, and removes the pending record with guards against double-crediting.
+7. **Round-in-Progress Crash & Interruption Recovery**: When `placeBet(gameId, gameName, bet, payout?)` is called, the round is atomically persisted to `localStorage` (`tahns_casino_v2_pending_round`). If the user refreshes, closes the tab, or crashes mid-spin, `CasinoContext` detects the interrupted round on initialization, settles it purely using the saved outcome (or as a settled completed round if payout was undetermined), updates achievement progress (`first_wager`, `high_roller`, `level_two`), logs an `"Interrupted round recovered"` activity item, and clears the pending record with guards against double-crediting.
 8. **No Direct Context Access**: Games must remain decoupled from global state by receiving all bankroll parameters, callbacks (`settle`, `placeBet`, `resolveRound`), and `animations` through `GameProps`. Mini-games must not call `useCasino()`.

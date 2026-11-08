@@ -235,7 +235,114 @@ function casinoReducer(state: CasinoState, action: CasinoAction): CasinoState {
   }
 }
 
-// ── Initial State Loader ──
+export interface PendingRound {
+  gameId: string;
+  gameName: string;
+  bet: number;
+  payout?: number;
+  timestamp: number;
+}
+
+export function updateAchievementProgressPure(
+  achievements: Achievement[],
+  achievementId: string,
+  value: number,
+  isAbsolute?: boolean
+): Achievement[] {
+  return achievements.map((ach) => {
+    if (ach.id !== achievementId) return ach;
+    const newProgress = isAbsolute
+      ? Math.min(ach.maxProgress, value)
+      : Math.min(ach.maxProgress, ach.progress + value);
+    const unlocked = newProgress >= ach.maxProgress;
+    return {
+      ...ach,
+      progress: newProgress,
+      unlocked: ach.unlocked || unlocked,
+    };
+  });
+}
+
+export interface RecoveryOutcome {
+  profile: WalletProfile;
+  achievements: Achievement[];
+  activities: ActivityItem[];
+  recovered: boolean;
+  result?: SettleResult;
+}
+
+export function recoverInterruptedRound(
+  profile: WalletProfile,
+  achievements: Achievement[],
+  activities: ActivityItem[],
+  pending: PendingRound
+): RecoveryOutcome {
+  const recoveryPayout = typeof pending.payout === 'number' ? pending.payout : 0;
+  const { profile: updatedProfile, result } = resolveRoundPure(
+    profile,
+    pending.bet,
+    recoveryPayout
+  );
+
+  const recoveryActivity: ActivityItem = {
+    id: `act_${pending.timestamp || Date.now()}_recovery`,
+    type: result.won ? 'wager_won' : result.net === 0 ? 'game_played' : 'wager_lost',
+    title: 'Interrupted round recovered',
+    description: `Interrupted round on ${pending.gameName || 'game'} recovered. ${
+      result.won
+        ? `+${result.net.toLocaleString()} Credits awarded.`
+        : 'Round completed as settled.'
+    }`,
+    timestamp: Date.now(),
+    creditsDelta: result.net,
+    xpDelta: result.xpGained,
+  };
+
+  let updatedActivities = [recoveryActivity, ...activities.slice(0, 19)];
+
+  if (result.leveledUp && result.newLevel) {
+    const promotionCredits = result.promotionCredits || 500 * result.newLevel;
+    const levelActivity: ActivityItem = {
+      id: `act_${Date.now()}_lvl`,
+      type: 'level_up',
+      title: `Promoted to Level ${result.newLevel}`,
+      description: `Promotion bonus credited: +${promotionCredits.toLocaleString()} Credits`,
+      timestamp: Date.now() + 1,
+      creditsDelta: promotionCredits,
+    };
+    updatedActivities = [levelActivity, ...updatedActivities.slice(0, 19)];
+  }
+
+  // Update achievements exactly like a normally resolved round
+  let updatedAchievements = updateAchievementProgressPure(
+    achievements,
+    'first_wager',
+    1,
+    true
+  );
+  updatedAchievements = updateAchievementProgressPure(
+    updatedAchievements,
+    'high_roller',
+    updatedProfile.credits,
+    true
+  );
+  updatedAchievements = updateAchievementProgressPure(
+    updatedAchievements,
+    'level_two',
+    updatedProfile.xp,
+    true
+  );
+
+  return {
+    profile: updatedProfile,
+    achievements: updatedAchievements,
+    activities: updatedActivities,
+    recovered: true,
+    result,
+  };
+}
+
+// ── Initial State Loader (Pure from storage inputs, without side-effects) ──
 function loadInitialState(): CasinoState {
   let profile: WalletProfile | null = null;
   let achievements: Achievement[] = INITIAL_ACHIEVEMENTS;
@@ -291,54 +398,16 @@ function loadInitialState(): CasinoState {
     // ignore
   }
 
-  // Recover any interrupted round-in-progress
+  // Recover any interrupted round-in-progress purely without state-initializer side-effects
   try {
     const savedPending = localStorage.getItem(`${STORAGE_KEY}_pending_round`);
     if (savedPending && profile) {
-      const pending = JSON.parse(savedPending) as {
-        gameId: string;
-        gameName: string;
-        bet: number;
-        payout?: number;
-        timestamp: number;
-      };
-      // Clear pending record immediately to prevent double-crediting
-      localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
-
-      const recoveryPayout = typeof pending.payout === 'number' ? pending.payout : 0;
-      const { profile: updatedProfile, result } = resolveRoundPure(
-        profile,
-        pending.bet,
-        recoveryPayout
-      );
-      profile = updatedProfile;
-
-      // Ensure updated profile is stored immediately
-      localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(profile));
-
-      const recoveryActivity: ActivityItem = {
-        id: `act_${Date.now()}_recovery`,
-        type: 'system',
-        title: 'Interrupted round recovered',
-        description: `Interrupted round on ${pending.gameName || 'game'} recovered. ${
-          result.won
-            ? `+${result.net.toLocaleString()} Credits awarded.`
-            : 'Round completed as settled.'
-        }`,
-        timestamp: Date.now(),
-        creditsDelta: result.net,
-        xpDelta: result.xpGained,
-      };
-      activities = [recoveryActivity, ...activities.slice(0, 19)];
-      localStorage.setItem(`${STORAGE_KEY}_activities`, JSON.stringify(activities));
+      const pending = JSON.parse(savedPending) as PendingRound;
+      const recovery = recoverInterruptedRound(profile, achievements, activities, pending);
+      profile = recovery.profile;
+      achievements = recovery.achievements;
+      activities = recovery.activities;
     }
-  } catch {
-    // ignore
-  }
-
-  // Ensure legacy stale games list is cleaned up from localStorage
-  try {
-    localStorage.removeItem(`${STORAGE_KEY}_games`);
   } catch {
     // ignore
   }
@@ -415,6 +484,15 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     soundManager.setEnabled(state.settings.soundEffects);
   }, [state.settings.soundEffects]);
+
+  // One-time cleanup effect on mount: ensure pending round is cleared from storage once loaded
+  useEffect(() => {
+    try {
+      localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Persistence effects: profile is persisted without derived level or title
   useEffect(() => {

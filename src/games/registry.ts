@@ -3,7 +3,7 @@ import { GameModule, GameProps } from '../types/casino';
 import { CasinoGameMetadata, GameFloorItem } from './types';
 import { calculateRtp } from './dice/diceRules';
 import { DiceGame } from './dice/DiceGame';
-import { calculateRtp as calculateSlotsRtp } from './slots/slotsRules';
+import { calculateAnalyticalRtp as calculateSlotsRtp } from './slots/slotsRules';
 import { DEFAULT_SLOTS_CONFIG, SlotsConfig } from './slots/slotsConfig';
 import { SlotsGame } from './slots/SlotsGame';
 import { SlotMachine } from './slots/SlotMachine';

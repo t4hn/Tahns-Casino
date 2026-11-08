@@ -60,7 +60,7 @@ npm run build
 │   │   └── Navigation.tsx           # Responsive header, desktop links, mobile bottom bar & drawer
 │   ├── context/             # Global application state
 │   │   ├── CasinoContext.tsx        # useReducer state with decoupled side effects & escrow recovery
-│   │   └── recovery.test.ts         # Unit tests for round interruption and crash recovery
+│   │   └── recovery.test.ts         # 4 unit tests for round interruption, crash recovery & achievement progress
 │   ├── data/                # Initial baseline configuration
 │   │   └── initialData.ts           # Avatars, starter settings, and achievements
 │   ├── economy/             # Pure wallet & economy engine (no React / side-effects)
@@ -81,7 +81,7 @@ npm run build
 │   │   │   │   └── SlotSymbolIcon.tsx
 │   │   │   ├── slotsConfig.ts       # Reel strip compositions, paylines, and paytable data
 │   │   │   ├── slotsRules.ts        # Generic N-reel rules engine, analytical & combinatorial RTP
-│   │   │   ├── slotsRules.test.ts   # 14 unit/integration tests (8,000 combos, analytical vs enumerated, N-reels)
+│   │   │   ├── slotsRules.test.ts   # 19 unit/integration tests (safety caps, analytical odds, multi-line, lean path)
 │   │   │   ├── SlotMachine.tsx      # Generic configurable slot machine component
 │   │   │   └── SlotsGame.tsx        # Lucky Slots wrapper passing DEFAULT_SLOTS_CONFIG
 │   │   ├── registry.ts              # Game module registry, registerSlotMachine helper, table derivation

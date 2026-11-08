@@ -1,14 +1,19 @@
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
+import * as slotsRulesModule from './slotsRules';
 import {
   DEFAULT_SLOTS_CONFIG,
   SlotsConfig,
+  SymbolId,
 } from './slotsConfig';
 import {
   getWindow,
   evaluateLine,
   evaluateSpin,
+  evaluateSpinFast,
   calculateRtp,
   calculateAnalyticalRtp,
+  calculateMatchOdds,
   calculateHitStats,
 } from './slotsRules';
 import { registerRuleSet } from './ruleSets';
@@ -77,6 +82,180 @@ describe('Lucky Slots Rules & Math Engine', () => {
       // Must match exactly (7719 / 8000 = 0.964875)
       expect(analyticalRtp).toBeCloseTo(0.964875, 6);
       expect(analyticalRtp).toBeCloseTo(enumeratedRtp, 6);
+    });
+
+    it('calculateMatchOdds for Lucky Slots equals the counts from calculateHitStats (1, 8, 27, 125, 216, 1512, 1176)', () => {
+      const matchOdds = calculateMatchOdds(DEFAULT_SLOTS_CONFIG);
+      expect(matchOdds).toBeDefined();
+      expect(matchOdds!.totalOutcomesPerLine).toBe(8000);
+
+      expect(matchOdds!.hitsByMatch['three_sevens']).toBe(1);
+      expect(matchOdds!.hitsByMatch['three_emeralds']).toBe(8);
+      expect(matchOdds!.hitsByMatch['three_bars']).toBe(27);
+      expect(matchOdds!.hitsByMatch['three_bells']).toBe(125);
+      expect(matchOdds!.hitsByMatch['three_cherries']).toBe(216);
+      expect(matchOdds!.hitsByMatch['two_cherries']).toBe(1512);
+      expect(matchOdds!.hitsByMatch['one_cherry_reel_1']).toBe(1176);
+
+      const stats = calculateHitStats(DEFAULT_SLOTS_CONFIG);
+      expect(matchOdds!.hitsByMatch['three_sevens']).toBe(stats.hitsByMatch['three_sevens']);
+      expect(matchOdds!.hitsByMatch['three_emeralds']).toBe(stats.hitsByMatch['three_emeralds']);
+      expect(matchOdds!.hitsByMatch['three_bars']).toBe(stats.hitsByMatch['three_bars']);
+      expect(matchOdds!.hitsByMatch['three_bells']).toBe(stats.hitsByMatch['three_bells']);
+      expect(matchOdds!.hitsByMatch['three_cherries']).toBe(stats.hitsByMatch['three_cherries']);
+      expect(matchOdds!.hitsByMatch['two_cherries']).toBe(stats.hitsByMatch['two_cherries']);
+      expect(matchOdds!.hitsByMatch['one_cherry_reel_1']).toBe(stats.hitsByMatch['one_cherry_reel_1']);
+    });
+  });
+
+  describe('Runtime Safety & Efficiency', () => {
+    it('throws when calculateRtp is called on large configs (>200,000 spins) without allowLarge, but works with allowLarge', () => {
+      // 5 reels x 24 stops = 24^5 = 7,962,624 spins (> 200,000)
+      const strip24: SymbolId[] = Array(24).fill('blank');
+      strip24[0] = 'seven';
+
+      registerRuleSet({
+        id: 'test-5reel-all7',
+        name: '5-Reel All 7s',
+        evaluateLine: (symbols) => {
+          const all7 = symbols.every((s) => s === 'seven');
+          if (all7) {
+            return { multiplier: 1000, matchId: 'five_sevens', matchDescription: '5x Seven', won: true };
+          }
+          return { multiplier: 0, matchId: 'no_win', matchDescription: 'No Win', won: false };
+        },
+      });
+
+      const bigConfig: SlotsConfig = {
+        reelsCount: 5,
+        visibleRows: 3,
+        stopsPerReel: [24, 24, 24, 24, 24],
+        reelStrips: [strip24, strip24, strip24, strip24, strip24],
+        paylines: [{ id: 'center', name: 'Center', rows: [1, 1, 1, 1, 1] }],
+        paytable: [{ id: 'five_sevens', name: '5x Seven', multiplier: 1000, description: '7 · 7 · 7 · 7 · 7' }],
+        ruleSet: 'test-5reel-all7',
+      };
+
+      // Calling calculateRtp without allowLarge throws
+      expect(() => calculateRtp(bigConfig)).toThrow(/exceeds safety limit/);
+      expect(() => calculateHitStats(bigConfig)).toThrow(/exceeds safety limit/);
+
+      // With allowLarge it works and returns expected RTP (1 hit out of 7,962,624 paying 1000x)
+      const rtp = calculateRtp(bigConfig, { allowLarge: true });
+      expect(typeof rtp).toBe('number');
+      expect(rtp).toBeCloseTo(1000 / 7962624, 6);
+    });
+
+    it('proves the lean path (evaluateSpinFast) and evaluateSpin agree on payout, multiplier, and matchIds across sample spins', () => {
+      // 1. Single line DEFAULT_SLOTS_CONFIG
+      const sampleStops = [
+        [13, 10, 5],
+        [6, 5, 7],
+        [2, 3, 0],
+        [1, 0, 2],
+        [0, 1, 1],
+        [0, 1, 3],
+        [0, 0, 0],
+        [4, 2, 3],
+      ];
+
+      for (const stops of sampleStops) {
+        const full = evaluateSpin(stops, 100, DEFAULT_SLOTS_CONFIG);
+        const lean = evaluateSpinFast(stops, 100, DEFAULT_SLOTS_CONFIG);
+        expect(lean.payout).toBe(full.payout);
+        expect(lean.totalMultiplier).toBe(full.totalMultiplier);
+        expect(lean.won).toBe(full.won);
+        expect(lean.isProfit).toBe(full.isProfit);
+        expect(lean.matchIds).toEqual(full.lines.map((l) => l.matchId));
+      }
+
+      // 2. Multi-line, 3-reel config with top, middle, and bottom paylines
+      const multiLineConfig: SlotsConfig = {
+        ...DEFAULT_SLOTS_CONFIG,
+        paylines: [
+          { id: 'top', name: 'Top Line', rows: [0, 0, 0] },
+          { id: 'middle', name: 'Middle Line', rows: [1, 1, 1] },
+          { id: 'bottom', name: 'Bottom Line', rows: [2, 2, 2] },
+        ],
+      };
+
+      for (let s0 = 0; s0 < 20; s0 += 4) {
+        for (let s1 = 0; s1 < 20; s1 += 4) {
+          for (let s2 = 0; s2 < 20; s2 += 4) {
+            const stops = [s0, s1, s2];
+            const full = evaluateSpin(stops, 90, multiLineConfig);
+            const lean = evaluateSpinFast(stops, 90, multiLineConfig);
+            expect(lean.payout).toBe(full.payout);
+            expect(lean.totalMultiplier).toBe(full.totalMultiplier);
+            expect(lean.won).toBe(full.won);
+            expect(lean.isProfit).toBe(full.isProfit);
+            expect(lean.matchIds).toEqual(full.lines.map((l) => l.matchId));
+          }
+        }
+      }
+    });
+
+    it('importing the registry and rendering Lucky Slots machine does not call calculateRtp or calculateHitStats', async () => {
+      const rtpSpy = vi.spyOn(slotsRulesModule, 'calculateRtp');
+      const hitStatsSpy = vi.spyOn(slotsRulesModule, 'calculateHitStats');
+
+      const { gameRegistry } = await import('../registry');
+      const luckySlotsModule = gameRegistry.getModule('lucky-slots');
+      expect(luckySlotsModule).toBeDefined();
+
+      const Component = luckySlotsModule!.component;
+      const { renderToString } = await import('react-dom/server');
+
+      renderToString(
+        React.createElement(Component, {
+          balance: 1000,
+          minBet: 10,
+          maxBet: 500,
+          settle: vi.fn(),
+          placeBet: vi.fn(),
+          resolveRound: vi.fn(),
+          animations: false,
+        })
+      );
+
+      expect(rtpSpy).not.toHaveBeenCalled();
+      expect(hitStatsSpy).not.toHaveBeenCalled();
+
+      rtpSpy.mockRestore();
+      hitStatsSpy.mockRestore();
+    });
+  });
+
+  describe('Multi-Line Hit Statistics', () => {
+    it('counts hitsByMatch across all paylines and tracks spinsWithAnyWin, spinsReturningMoreThanBet, and maxMultiplier', () => {
+      // 3 reels x 4 stops = 64 total spins, 2 paylines (center and top)
+      const strip4: SymbolId[] = ['cherry', 'seven', 'blank', 'bell'];
+      const multiLineConfig: SlotsConfig = {
+        reelsCount: 3,
+        visibleRows: 3,
+        stopsPerReel: [4, 4, 4],
+        reelStrips: [strip4, strip4, strip4],
+        paylines: [
+          { id: 'center', name: 'Center', rows: [1, 1, 1] },
+          { id: 'top', name: 'Top', rows: [0, 0, 0] },
+        ],
+        paytable: DEFAULT_SLOTS_CONFIG.paytable,
+        ruleSet: 'classic-cherry-3reel',
+      };
+
+      const stats = calculateHitStats(multiLineConfig);
+      expect(stats.totalSpins).toBe(64);
+
+      // Verify hits across both lines are accumulated into hitsByMatch
+      const totalLineEvaluations = Object.values(stats.hitsByMatch).reduce((a, b) => a + b, 0);
+      expect(totalLineEvaluations).toBe(64 * 2); // 2 lines evaluated per spin = 128 total evaluations
+
+      expect(stats.spinsWithAnyWin).toBeGreaterThan(0);
+      expect(stats.spinsReturningMoreThanBet).toBeGreaterThan(0);
+      expect(stats.maxMultiplier).toBeGreaterThan(0);
+
+      // spinsWithAnyWin cannot exceed total spins
+      expect(stats.spinsWithAnyWin).toBeLessThanOrEqual(stats.totalSpins);
     });
   });
 
