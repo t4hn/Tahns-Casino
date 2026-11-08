@@ -69,10 +69,21 @@ export interface Payline {
 export interface SlotsConfig {
   reelsCount: number;
   visibleRows: number;
-  stopsPerReel: number;
+  stopsPerReel: number | number[];
   reelStrips: SymbolId[][];
   paylines: Payline[];
   paytable: PaytableItem[];
+  ruleSet?: string;
+}
+
+export function getStopsPerReel(config: SlotsConfig): number[] {
+  if (Array.isArray(config.stopsPerReel)) {
+    return config.stopsPerReel;
+  }
+  if (typeof config.stopsPerReel === 'number') {
+    return config.reelStrips.map(() => config.stopsPerReel as number);
+  }
+  return config.reelStrips.map((strip) => strip.length);
 }
 
 /**
@@ -149,7 +160,7 @@ export const SLOTS_PAYTABLE: PaytableItem[] = [
 export const DEFAULT_SLOTS_CONFIG: SlotsConfig = {
   reelsCount: 3,
   visibleRows: 3,
-  stopsPerReel: 20,
+  stopsPerReel: [20, 20, 20],
   reelStrips: [REEL_0_STRIP, REEL_1_STRIP, REEL_2_STRIP],
   paylines: [
     {
@@ -159,4 +170,5 @@ export const DEFAULT_SLOTS_CONFIG: SlotsConfig = {
     },
   ],
   paytable: SLOTS_PAYTABLE,
+  ruleSet: 'classic-cherry-3reel',
 };

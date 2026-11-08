@@ -59,7 +59,8 @@ npm run build
 │   │   ├── GameCard.tsx             # Casino floor game showcase & launch card
 │   │   └── Navigation.tsx           # Responsive header, desktop links, mobile bottom bar & drawer
 │   ├── context/             # Global application state
-│   │   └── CasinoContext.tsx        # useReducer state with decoupled side effects
+│   │   ├── CasinoContext.tsx        # useReducer state with decoupled side effects & escrow recovery
+│   │   └── recovery.test.ts         # Unit tests for round interruption and crash recovery
 │   ├── data/                # Initial baseline configuration
 │   │   └── initialData.ts           # Avatars, starter settings, and achievements
 │   ├── economy/             # Pure wallet & economy engine (no React / side-effects)
@@ -74,12 +75,16 @@ npm run build
 │   │   │   ├── diceRules.test.ts    # 18 unit/integration tests for dice combinations & rules
 │   │   │   ├── rng.ts               # Re-exports rollDie from shared RNG
 │   │   │   └── DiceGame.tsx         # Interactive dice table UI (implements GameProps)
-│   │   ├── slots/                   # Lucky Slots mini-game plug-in (3-reel, single payline)
-│   │   │   ├── slotsConfig.ts       # 20-stop reel strips, paylines, and paytable configuration
-│   │   │   ├── slotsRules.ts        # Pure window generator, line evaluator, and 8,000 combo RTP
-│   │   │   ├── slotsRules.test.ts   # 12 unit/integration tests (8,000 combos, fake timer unmount, single source of truth)
-│   │   │   └── SlotsGame.tsx        # Interactive slots machine UI (implements GameProps)
-│   │   ├── registry.ts              # Game module registry and level-based table derivation
+│   │   ├── slots/                   # Configurable Slot Machine Engine
+│   │   │   ├── ruleSets.ts          # Registry of line evaluators & analytical RTP calculators
+│   │   │   ├── symbols/             # Vector artwork components for slot symbols
+│   │   │   │   └── SlotSymbolIcon.tsx
+│   │   │   ├── slotsConfig.ts       # Reel strip compositions, paylines, and paytable data
+│   │   │   ├── slotsRules.ts        # Generic N-reel rules engine, analytical & combinatorial RTP
+│   │   │   ├── slotsRules.test.ts   # 14 unit/integration tests (8,000 combos, analytical vs enumerated, N-reels)
+│   │   │   ├── SlotMachine.tsx      # Generic configurable slot machine component
+│   │   │   └── SlotsGame.tsx        # Lucky Slots wrapper passing DEFAULT_SLOTS_CONFIG
+│   │   ├── registry.ts              # Game module registry, registerSlotMachine helper, table derivation
 │   │   ├── types.ts                 # CasinoGameMetadata, GameFloorItem
 │   │   └── README.md                # Guide on implementing and plugging in new games
 │   ├── types/               # TypeScript domain interfaces

@@ -35,7 +35,7 @@ export const GameDetailView: React.FC = () => {
           minBet={activeGame.minBet}
           maxBet={activeGame.maxBet}
           settle={(bet, payout) => executeRound(activeGame.id, activeGame.name, bet, payout)}
-          placeBet={(bet) => placeBet(activeGame.id, activeGame.name, bet)}
+          placeBet={(bet, payout) => placeBet(activeGame.id, activeGame.name, bet, payout)}
           resolveRound={(bet, payout) => resolveRound(activeGame.id, activeGame.name, bet, payout)}
           animations={settings.animations !== false}
         />

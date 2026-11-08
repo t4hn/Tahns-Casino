@@ -291,6 +291,51 @@ function loadInitialState(): CasinoState {
     // ignore
   }
 
+  // Recover any interrupted round-in-progress
+  try {
+    const savedPending = localStorage.getItem(`${STORAGE_KEY}_pending_round`);
+    if (savedPending && profile) {
+      const pending = JSON.parse(savedPending) as {
+        gameId: string;
+        gameName: string;
+        bet: number;
+        payout?: number;
+        timestamp: number;
+      };
+      // Clear pending record immediately to prevent double-crediting
+      localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
+
+      const recoveryPayout = typeof pending.payout === 'number' ? pending.payout : 0;
+      const { profile: updatedProfile, result } = resolveRoundPure(
+        profile,
+        pending.bet,
+        recoveryPayout
+      );
+      profile = updatedProfile;
+
+      // Ensure updated profile is stored immediately
+      localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(profile));
+
+      const recoveryActivity: ActivityItem = {
+        id: `act_${Date.now()}_recovery`,
+        type: 'system',
+        title: 'Interrupted round recovered',
+        description: `Interrupted round on ${pending.gameName || 'game'} recovered. ${
+          result.won
+            ? `+${result.net.toLocaleString()} Credits awarded.`
+            : 'Round completed as settled.'
+        }`,
+        timestamp: Date.now(),
+        creditsDelta: result.net,
+        xpDelta: result.xpGained,
+      };
+      activities = [recoveryActivity, ...activities.slice(0, 19)];
+      localStorage.setItem(`${STORAGE_KEY}_activities`, JSON.stringify(activities));
+    }
+  } catch {
+    // ignore
+  }
+
   // Ensure legacy stale games list is cleaned up from localStorage
   try {
     localStorage.removeItem(`${STORAGE_KEY}_games`);
@@ -335,7 +380,12 @@ interface CasinoContextType {
   updateProfile: (name: string, avatarUrl: string) => void;
   resetProgress: () => void;
   recordActivity: (item: Omit<ActivityItem, 'id' | 'timestamp'>) => void;
-  placeBet: (gameId: string, gameName: string, bet: number) => { success: boolean; error?: string };
+  placeBet: (
+    gameId: string,
+    gameName: string,
+    bet: number,
+    payout?: number
+  ) => { success: boolean; error?: string };
   resolveRound: (
     gameId: string,
     gameName: string,
@@ -514,7 +564,12 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const placeBet = useCallback(
-    (gameId: string, gameName: string, bet: number): { success: boolean; error?: string } => {
+    (
+      gameId: string,
+      gameName: string,
+      bet: number,
+      payout?: number
+    ): { success: boolean; error?: string } => {
       const currentProfile = profileRef.current;
       if (!currentProfile) {
         return { success: false, error: 'No active patron profile.' };
@@ -527,6 +582,22 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       profileRef.current = betRes.profile;
+
+      // Persist pending round and latest profile to localStorage immediately
+      try {
+        const pending = {
+          gameId,
+          gameName,
+          bet,
+          payout,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pending));
+        localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
+      } catch (e) {
+        console.warn('Storage failed for pending round', e);
+      }
+
       dispatch({ type: 'PLACE_BET', payload: { updatedProfile: betRes.profile } });
 
       return { success: true };
@@ -542,6 +613,13 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       payout: number,
       customXp?: number
     ): SettleResult => {
+      // Clear pending round from localStorage immediately upon resolution
+      try {
+        localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
+      } catch (e) {
+        console.warn('Storage cleanup failed for pending round', e);
+      }
+
       const currentProfile = profileRef.current;
       if (!currentProfile) {
         return {
@@ -643,7 +721,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       payout: number,
       customXp?: number
     ): SettleResult => {
-      const betRes = placeBet(gameId, gameName, bet);
+      const betRes = placeBet(gameId, gameName, bet, payout);
       if (!betRes.success) {
         return {
           success: false,
@@ -810,6 +888,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       localStorage.removeItem(`${STORAGE_KEY}_settings`);
       localStorage.removeItem(`${STORAGE_KEY}_games`);
       localStorage.removeItem(`${STORAGE_KEY}_visited_games`);
+      localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
     } catch {
       // ignore
     }

@@ -8,8 +8,10 @@ import {
   evaluateLine,
   evaluateSpin,
   calculateRtp,
+  calculateAnalyticalRtp,
   calculateHitStats,
 } from './slotsRules';
+import { registerRuleSet } from './ruleSets';
 import { randomInt } from '../shared/rng';
 import {
   settleRound,
@@ -66,6 +68,59 @@ describe('Lucky Slots Rules & Math Engine', () => {
       const stats = calculateHitStats(DEFAULT_SLOTS_CONFIG);
       expect(stats.hitFrequency).toBeCloseTo(3065 / 8000, 5);
       expect(stats.profitFrequency).toBeCloseTo(1889 / 8000, 5);
+    });
+
+    it('fast analytical RTP calculation exactly matches full combinatorial enumeration', () => {
+      const analyticalRtp = calculateAnalyticalRtp(DEFAULT_SLOTS_CONFIG);
+      const enumeratedRtp = calculateRtp(DEFAULT_SLOTS_CONFIG);
+
+      // Must match exactly (7719 / 8000 = 0.964875)
+      expect(analyticalRtp).toBeCloseTo(0.964875, 6);
+      expect(analyticalRtp).toBeCloseTo(enumeratedRtp, 6);
+    });
+  });
+
+  describe('Generic N-Reel Engine Support', () => {
+    it('evaluates arbitrary reel counts (e.g. 2-reel machine) with custom paylines and unequal strip lengths', () => {
+      // Register custom 2-reel rule set
+      registerRuleSet({
+        id: 'test-2reel-match',
+        name: '2-Reel Matcher',
+        evaluateLine: (symbols) => {
+          if (symbols[0] === symbols[1] && symbols[0] === 'seven') {
+            return { multiplier: 50, matchId: 'double_seven', matchDescription: 'Double 7', won: true };
+          }
+          return { multiplier: 0, matchId: 'no_win', matchDescription: 'No Win', won: false };
+        },
+      });
+
+      const custom2ReelConfig: SlotsConfig = {
+        reelsCount: 2,
+        visibleRows: 3,
+        stopsPerReel: [4, 5], // Unequal strip lengths: Reel 0 has 4 stops, Reel 1 has 5 stops
+        reelStrips: [
+          ['seven', 'blank', 'cherry', 'bell'], // 1 seven out of 4
+          ['blank', 'seven', 'bar', 'bell', 'emerald'], // 1 seven out of 5
+        ],
+        paylines: [
+          { id: 'center', name: 'Center', rows: [1, 1] },
+        ],
+        paytable: [
+          { id: 'double_seven', name: 'Double 7', multiplier: 50, description: '7 · 7' },
+        ],
+        ruleSet: 'test-2reel-match',
+      };
+
+      // Total combinations = 4 * 5 = 20
+      const stats = calculateHitStats(custom2ReelConfig);
+      expect(stats.totalSpins).toBe(20);
+      // Double seven can hit on exactly stop (0 on reel 0, 1 on reel 1)
+      expect(stats.hitsByMatch['double_seven']).toBe(1);
+      expect(stats.totalHits).toBe(1);
+
+      // RTP = (1 * 50) / 20 = 2.5 (250%)
+      const rtp = calculateRtp(custom2ReelConfig);
+      expect(rtp).toBe(2.5);
     });
   });
 

@@ -1,10 +1,12 @@
-import { GameModule } from '../types/casino';
+import React from 'react';
+import { GameModule, GameProps } from '../types/casino';
 import { CasinoGameMetadata, GameFloorItem } from './types';
 import { calculateRtp } from './dice/diceRules';
 import { DiceGame } from './dice/DiceGame';
 import { calculateRtp as calculateSlotsRtp } from './slots/slotsRules';
-import { DEFAULT_SLOTS_CONFIG } from './slots/slotsConfig';
+import { DEFAULT_SLOTS_CONFIG, SlotsConfig } from './slots/slotsConfig';
 import { SlotsGame } from './slots/SlotsGame';
+import { SlotMachine } from './slots/SlotMachine';
 
 const DICE_RTP_RANGE = `${(calculateRtp('low') * 100).toFixed(1)}% - ${(calculateRtp('seven') * 100).toFixed(1)}%`;
 const SLOTS_RTP = `${(calculateSlotsRtp(DEFAULT_SLOTS_CONFIG) * 100).toFixed(1)}%`;
@@ -97,6 +99,10 @@ class GameRegistry {
     initialGames.forEach((g) => this.gamesCatalog.set(g.id, g));
   }
 
+  public registerGame(game: CasinoGameMetadata): void {
+    this.gamesCatalog.set(game.id, game);
+  }
+
   public registerModule(module: GameModule): void {
     this.modules.set(module.id, module);
   }
@@ -134,13 +140,43 @@ class GameRegistry {
 }
 
 export const gameRegistry = new GameRegistry();
- 
+
 export function registerGameModule(module: GameModule): void {
   gameRegistry.registerModule(module);
 }
 
 export function getGameModule(id: string): GameModule | undefined {
   return gameRegistry.getModule(id);
+}
+
+/**
+ * Helper to register a new slot machine in one call:
+ * Automatically derives the theoretical payoutRate from config,
+ * adds the game metadata to the floor catalog, and binds the SlotMachine component.
+ */
+export function registerSlotMachine(
+  metadata: Omit<CasinoGameMetadata, 'category' | 'payoutRate'> & {
+    payoutRate?: string;
+    category?: 'Slots';
+  },
+  config: SlotsConfig
+): void {
+  const derivedPayoutRate = `${(calculateSlotsRtp(config) * 100).toFixed(1)}%`;
+  const fullMetadata: CasinoGameMetadata = {
+    ...metadata,
+    category: 'Slots',
+    payoutRate: metadata.payoutRate || derivedPayoutRate,
+  };
+
+  gameRegistry.registerGame(fullMetadata);
+
+  const SlotComponent: React.FC<GameProps> = (props) =>
+    React.createElement(SlotMachine, { ...props, config });
+
+  gameRegistry.registerModule({
+    id: metadata.id,
+    component: SlotComponent,
+  });
 }
 
 // Register interactive casino game modules

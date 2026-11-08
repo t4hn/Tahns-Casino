@@ -28,8 +28,9 @@ export interface GameProps {
   /**
    * Escrow bet placement callback.
    * Immediately deducts the wager from patron bankroll before animations start.
+   * Optionally accepts predetermined payout to persist for crash recovery.
    */
-  placeBet: (bet: number) => { success: boolean; error?: string };
+  placeBet: (bet: number, payout?: number) => { success: boolean; error?: string };
   /**
    * Escrow round resolution callback.
    * Credits payout, updates statistics, awards XP, and checks level-ups.
@@ -108,6 +109,69 @@ Once registered:
 
 ---
 
+## Generic Slot Machine Engine
+
+Tahn's Casino features a generic, config-driven slot engine in `src/games/slots/` supporting arbitrary reel counts, visible rows, paylines, and strip compositions.
+
+### Adding a New Slot Machine in One Call:
+Use `registerSlotMachine` in `src/games/registry.ts`:
+
+```typescript
+import { registerSlotMachine } from './registry';
+import { SlotsConfig } from './slots/slotsConfig';
+
+const MY_SLOT_CONFIG: SlotsConfig = {
+  reelsCount: 3,
+  visibleRows: 3,
+  stopsPerReel: [20, 20, 20],
+  reelStrips: [...],
+  paylines: [
+    { id: 'middle', name: 'Center Payline', rows: [1, 1, 1] },
+  ],
+  paytable: [...],
+  ruleSet: 'classic-cherry-3reel',
+};
+
+registerSlotMachine(
+  {
+    id: 'my-custom-slot',
+    name: 'Crown Jewels 3-Reel',
+    description: 'Luxury high-roller slots with sparkling sapphire wilds.',
+    imageUrl: '/images/game_lucky_slots_1793671235711.jpg',
+    minLevel: 2,
+    minBet: 20,
+    maxBet: 1000,
+    volatility: 'Medium',
+  },
+  MY_SLOT_CONFIG
+);
+```
+
+`registerSlotMachine` automatically:
+1. Calculates the theoretical payout rate (`payoutRate`) from the config using `calculateRtp(config)` or `calculateAnalyticalRtp(config)`.
+2. Adds the machine to the casino floor catalog with level requirements and table limits.
+3. Binds the generic `SlotMachine` component wrapped with the machine's configuration.
+
+### Custom Rule Sets
+To register a new payout evaluation rule set, add a definition to `src/games/slots/ruleSets.ts`:
+
+```typescript
+import { registerRuleSet } from './ruleSets';
+
+registerRuleSet({
+  id: 'ways-to-win-rule-set',
+  name: '243 Ways Rule Set',
+  evaluateLine: (symbolsOnLine, config) => {
+    // Return multiplier, matchId, matchDescription, won
+  },
+  calculateAnalyticalRtp: (config) => {
+    // Optional fast analytical RTP calculation without permutation enumeration
+  },
+});
+```
+
+---
+
 ## Economy Rules & Invariants
 
 1. **Total Payout Semantics**: `settle(bet, payout)` treats `payout` as the **TOTAL returned amount including the original stake**. A win at 2.3x returns `Math.round(bet * 2.3)`. A push returns `bet` (`payout === bet`). A loss returns `0` (`payout === 0`).
@@ -115,5 +179,6 @@ Once registered:
 3. **Net Accounting**: Total winnings and losses are tracked strictly by net round results (`net = payout - bet`).
 4. **Resolution Guard**: Mini-games must disable their Roll/Play buttons while a round is actively rolling or resolving (using ref guards to reject rapid double-taps).
 5. **Atomic Progression**: XP is credited via `applyXp`, automatically awarding level promotion bonuses for every tier threshold crossed.
-6. **Escrow & Mid-Spin Unmount Resolution**: Games with animations must place the wager into escrow via `placeBet(bet)` before starting animations. If the player leaves the game before the animation concludes, the component's unmount cleanup handler must immediately invoke `resolveRound(wager, payout)` with the predetermined outcome so credits are never lost or left in dangling escrow.
-7. **No Direct Context Access**: Games must remain decoupled from global state by receiving all bankroll parameters, callbacks (`settle`, `placeBet`, `resolveRound`), and `animations` through `GameProps`. Mini-games must not call `useCasino()`.
+6. **Escrow & Mid-Spin Unmount Resolution**: Games with animations must place the wager into escrow via `placeBet(bet, predeterminedPayout?)` before starting animations. If the player leaves the game before the animation concludes, the component's unmount cleanup handler immediately invokes `resolveRound(wager, payout)` with the predetermined outcome so credits are never lost or left in dangling escrow.
+7. **Round-in-Progress Crash & Interruption Recovery**: When `placeBet(gameId, gameName, bet, payout?)` is called, the round is atomically persisted to `localStorage` (`tahns_casino_v2_pending_round`). If the user refreshes, closes the tab, or crashes mid-spin, `CasinoContext` detects the interrupted round on initialization, settles it using the saved outcome (or as a completed round if payout was undetermined), logs an `"Interrupted round recovered"` activity item, and removes the pending record with guards against double-crediting.
+8. **No Direct Context Access**: Games must remain decoupled from global state by receiving all bankroll parameters, callbacks (`settle`, `placeBet`, `resolveRound`), and `animations` through `GameProps`. Mini-games must not call `useCasino()`.
