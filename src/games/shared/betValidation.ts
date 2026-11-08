@@ -20,5 +20,8 @@ export function isValidBet(
   if (bet > maxBet) {
     return { valid: false, reason: `Wager cannot exceed ${maxBet} credits.` };
   }
+  if (bet % 10 !== 0) {
+    return { valid: false, reason: 'Wagers must be in steps of 10.' };
+  }
   return { valid: true };
 }

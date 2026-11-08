@@ -4,6 +4,8 @@ import {
   applyWager,
   applyPayout,
   applyXp,
+  placeBet,
+  resolveRound,
   settleRound,
   applyDailyBonus,
   applyAchievementReward,
@@ -219,6 +221,38 @@ describe('Pure Wallet & Economy Logic', () => {
       // Verify initial object immutability
       expect(initial.credits).toBe(800);
       expect(initial.gamesPlayed).toBe(5);
+    });
+
+    it('settleRound and placeBet followed by resolveRound produce identical results and profiles', () => {
+      const initial = createMockProfile({ credits: 1500, xp: 200, gamesPlayed: 10, totalWinnings: 600, totalLosses: 300 });
+
+      // Scenario A: Win
+      const singleShotWin = settleRound(initial, 100, 300, 50);
+      const escrowBetWin = placeBet(initial, 100);
+      expect(escrowBetWin.success).toBe(true);
+      expect(escrowBetWin.profile.credits).toBe(1400);
+      const escrowResolveWin = resolveRound(escrowBetWin.profile, 100, 300, 50);
+
+      expect(escrowResolveWin.profile).toEqual(singleShotWin.profile);
+      expect(escrowResolveWin.result).toEqual(singleShotWin.result);
+
+      // Scenario B: Loss
+      const singleShotLoss = settleRound(initial, 150, 0, 20);
+      const escrowBetLoss = placeBet(initial, 150);
+      expect(escrowBetLoss.success).toBe(true);
+      expect(escrowBetLoss.profile.credits).toBe(1350);
+      const escrowResolveLoss = resolveRound(escrowBetLoss.profile, 150, 0, 20);
+
+      expect(escrowResolveLoss.profile).toEqual(singleShotLoss.profile);
+      expect(escrowResolveLoss.result).toEqual(singleShotLoss.result);
+
+      // Scenario C: Push
+      const singleShotPush = settleRound(initial, 50, 50, 10);
+      const escrowBetPush = placeBet(initial, 50);
+      const escrowResolvePush = resolveRound(escrowBetPush.profile, 50, 50, 10);
+
+      expect(escrowResolvePush.profile).toEqual(singleShotPush.profile);
+      expect(escrowResolvePush.result).toEqual(singleShotPush.result);
     });
 
     it('leaves profile unchanged if settleRound encounters invalid wager', () => {

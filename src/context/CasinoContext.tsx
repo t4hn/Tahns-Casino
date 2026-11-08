@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   PlayerProfile,
   GameItem,
@@ -12,6 +12,8 @@ import {
   LevelInfo,
   calculateLevelInfo,
   settleRound,
+  placeBet as placeBetPure,
+  resolveRound as resolveRoundPure,
   applyDailyBonus,
   applyAchievementReward,
   SettleResult,
@@ -45,6 +47,8 @@ interface CasinoState {
 type CasinoAction =
   | { type: 'CREATE_CHARACTER'; payload: { name: string; avatarUrl: string } }
   | { type: 'UPDATE_PROFILE'; payload: { name: string; avatarUrl: string } }
+  | { type: 'PLACE_BET'; payload: { updatedProfile: WalletProfile } }
+  | { type: 'RESOLVE_ROUND'; payload: { updatedProfile: WalletProfile } }
   | { type: 'SETTLE_ROUND'; payload: { updatedProfile: WalletProfile } }
   | { type: 'CLAIM_DAILY_BONUS'; payload: { updatedProfile: WalletProfile } }
   | { type: 'FAST_FORWARD_DAILY_BONUS' }
@@ -93,6 +97,20 @@ function casinoReducer(state: CasinoState, action: CasinoAction): CasinoState {
           name: action.payload.name.trim() || 'Tahn',
           avatarUrl: action.payload.avatarUrl,
         },
+      };
+    }
+
+    case 'PLACE_BET': {
+      return {
+        ...state,
+        profile: action.payload.updatedProfile,
+      };
+    }
+
+    case 'RESOLVE_ROUND': {
+      return {
+        ...state,
+        profile: action.payload.updatedProfile,
       };
     }
 
@@ -317,6 +335,14 @@ interface CasinoContextType {
   updateProfile: (name: string, avatarUrl: string) => void;
   resetProgress: () => void;
   recordActivity: (item: Omit<ActivityItem, 'id' | 'timestamp'>) => void;
+  placeBet: (gameId: string, gameName: string, bet: number) => { success: boolean; error?: string };
+  resolveRound: (
+    gameId: string,
+    gameName: string,
+    bet: number,
+    payout: number,
+    customXp?: number
+  ) => SettleResult;
   executeRound: (
     gameId: string,
     gameName: string,
@@ -330,6 +356,10 @@ const CasinoContext = createContext<CasinoContextType | undefined>(undefined);
 
 export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(casinoReducer, undefined, loadInitialState);
+
+  // Profile ref updated on every render to ensure latest state is read without stale closures
+  const profileRef = useRef<WalletProfile | null>(state.profile);
+  profileRef.current = state.profile;
 
   // Sync sound settings with soundManager
   useEffect(() => {
@@ -483,9 +513,37 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     dispatch({ type: 'RECORD_ACTIVITY', payload: activity });
   }, []);
 
-  const executeRound = useCallback(
-    (gameId: string, gameName: string, bet: number, payout: number, customXp?: number): SettleResult => {
-      if (!state.profile) {
+  const placeBet = useCallback(
+    (gameId: string, gameName: string, bet: number): { success: boolean; error?: string } => {
+      const currentProfile = profileRef.current;
+      if (!currentProfile) {
+        return { success: false, error: 'No active patron profile.' };
+      }
+
+      const betRes = placeBetPure(currentProfile, bet);
+      if (!betRes.success) {
+        soundManager.playLocked();
+        return { success: false, error: betRes.error };
+      }
+
+      profileRef.current = betRes.profile;
+      dispatch({ type: 'PLACE_BET', payload: { updatedProfile: betRes.profile } });
+
+      return { success: true };
+    },
+    []
+  );
+
+  const resolveRound = useCallback(
+    (
+      gameId: string,
+      gameName: string,
+      bet: number,
+      payout: number,
+      customXp?: number
+    ): SettleResult => {
+      const currentProfile = profileRef.current;
+      if (!currentProfile) {
         return {
           success: false,
           won: false,
@@ -498,18 +556,17 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       }
 
-      // 1. Pure settlement
-      const { profile: updatedProfile, result } = settleRound(state.profile, bet, payout, customXp);
+      const { profile: updatedProfile, result } = resolveRoundPure(
+        currentProfile,
+        bet,
+        payout,
+        customXp
+      );
 
-      if (!result.success) {
-        soundManager.playLocked();
-        return result;
-      }
+      profileRef.current = updatedProfile;
+      dispatch({ type: 'RESOLVE_ROUND', payload: { updatedProfile } });
 
-      // 2. Dispatch state update
-      dispatch({ type: 'SETTLE_ROUND', payload: { updatedProfile } });
-
-      // 3. Side effects: Sounds
+      // Side effects: Sounds
       if (result.leveledUp) {
         soundManager.playLevelUp();
       } else if (result.won) {
@@ -518,7 +575,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         soundManager.playClick();
       }
 
-      // 4. Side effects: Activity logging with ACCURATE types
+      // Side effects: Activity logging with ACCURATE types
       const activityType: ActivityItem['type'] = result.won
         ? 'wager_won'
         : result.net === 0
@@ -559,7 +616,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         dispatch({ type: 'RECORD_ACTIVITY', payload: levelActivity });
       }
 
-      // 5. Side effects: Milestone progress
+      // Milestone progress
       dispatch({
         type: 'UPDATE_ACHIEVEMENT_PROGRESS',
         payload: { achievementId: 'first_wager', value: 1, isAbsolute: true },
@@ -575,19 +632,47 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       return result;
     },
-    [state.profile]
+    []
+  );
+
+  const executeRound = useCallback(
+    (
+      gameId: string,
+      gameName: string,
+      bet: number,
+      payout: number,
+      customXp?: number
+    ): SettleResult => {
+      const betRes = placeBet(gameId, gameName, bet);
+      if (!betRes.success) {
+        return {
+          success: false,
+          won: false,
+          net: 0,
+          bet,
+          payout: 0,
+          xpGained: 0,
+          leveledUp: false,
+          error: betRes.error,
+        };
+      }
+      return resolveRound(gameId, gameName, bet, payout, customXp);
+    },
+    [placeBet, resolveRound]
   );
 
   const claimDailyBonus = useCallback((): boolean => {
-    if (!state.profile || !isDailyBonusAvailable) {
+    const currentProfile = profileRef.current;
+    if (!currentProfile || !isDailyBonusAvailable) {
       soundManager.playLocked();
       return false;
     }
 
     const { profile: updatedProfile, creditsAwarded, xpAwarded, leveledUp, newLevel } = applyDailyBonus(
-      state.profile
+      currentProfile
     );
 
+    profileRef.current = updatedProfile;
     dispatch({ type: 'CLAIM_DAILY_BONUS', payload: { updatedProfile } });
 
     soundManager.playBonusClaim();
@@ -616,7 +701,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     return true;
-  }, [state.profile, isDailyBonusAvailable]);
+  }, [isDailyBonusAvailable]);
 
   const fastForwardDailyBonus = useCallback(() => {
     dispatch({ type: 'FAST_FORWARD_DAILY_BONUS' });
@@ -625,18 +710,20 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const claimAchievement = useCallback(
     (achievementId: string) => {
+      const currentProfile = profileRef.current;
       const ach = state.achievements.find((a) => a.id === achievementId);
-      if (!ach || !ach.unlocked || ach.claimed || !state.profile) {
+      if (!ach || !ach.unlocked || ach.claimed || !currentProfile) {
         soundManager.playLocked();
         return;
       }
 
       const { profile: updatedProfile, leveledUp } = applyAchievementReward(
-        state.profile,
+        currentProfile,
         ach.rewardCredits,
         ach.rewardXp
       );
 
+      profileRef.current = updatedProfile;
       dispatch({ type: 'CLAIM_ACHIEVEMENT', payload: { achievementId, updatedProfile } });
 
       soundManager.playCoin();
@@ -660,7 +747,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         payload: { achievementId: 'high_roller', value: updatedProfile.credits, isAbsolute: true },
       });
     },
-    [state.achievements, state.profile]
+    [state.achievements]
   );
 
   const setCurrentTab = useCallback((tab: NavTab) => {
@@ -755,6 +842,8 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateProfile,
         resetProgress,
         recordActivity,
+        placeBet,
+        resolveRound,
         executeRound,
       }}
     >

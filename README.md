@@ -63,21 +63,21 @@ npm run build
 │   ├── data/                # Initial baseline configuration
 │   │   └── initialData.ts           # Avatars, starter settings, and achievements
 │   ├── economy/             # Pure wallet & economy engine (no React / side-effects)
-│   │   ├── wallet.ts                # applyWager, applyPayout, applyXp, settleRound
-│   │   └── wallet.test.ts           # Comprehensive Vitest test suite (15 unit tests)
+│   │   ├── wallet.ts                # placeBet, resolveRound, settleRound, applyWager, applyPayout, applyXp
+│   │   └── wallet.test.ts           # Comprehensive Vitest test suite (16 unit tests)
 │   ├── games/               # Mini-game plug-in layer
 │   │   ├── shared/                  # Shared game utilities
 │   │   │   ├── rng.ts               # Unbiased crypto randomInt & rollDie with rejection sampling
-│   │   │   └── betValidation.ts     # Standardized wager boundary validator
+│   │   │   └── betValidation.ts     # Standardized wager boundary validator (steps of 10 enforced)
 │   │   ├── dice/                    # Dice mini-game plug-in
 │   │   │   ├── diceRules.ts         # Pure game rules, bet types, payouts, RTP
-│   │   │   ├── diceRules.test.ts    # 17 unit/integration tests for dice combinations & rules
+│   │   │   ├── diceRules.test.ts    # 18 unit/integration tests for dice combinations & rules
 │   │   │   ├── rng.ts               # Re-exports rollDie from shared RNG
 │   │   │   └── DiceGame.tsx         # Interactive dice table UI (implements GameProps)
 │   │   ├── slots/                   # Lucky Slots mini-game plug-in (3-reel, single payline)
 │   │   │   ├── slotsConfig.ts       # 20-stop reel strips, paylines, and paytable configuration
 │   │   │   ├── slotsRules.ts        # Pure window generator, line evaluator, and 8,000 combo RTP
-│   │   │   ├── slotsRules.test.ts   # 8 unit/integration tests for all 8,000 combinations
+│   │   │   ├── slotsRules.test.ts   # 12 unit/integration tests (8,000 combos, fake timer unmount, single source of truth)
 │   │   │   └── SlotsGame.tsx        # Interactive slots machine UI (implements GameProps)
 │   │   ├── registry.ts              # Game module registry and level-based table derivation
 │   │   ├── types.ts                 # CasinoGameMetadata, GameFloorItem

@@ -79,48 +79,29 @@ export function getWindow(
  */
 export function evaluateLine(
   symbolsOnLine: SymbolId[],
-  _config: SlotsConfig = DEFAULT_SLOTS_CONFIG
+  config: SlotsConfig = DEFAULT_SLOTS_CONFIG
 ): { multiplier: number; matchId: string; matchDescription: string; won: boolean } {
   const [s0, s1, s2] = symbolsOnLine;
+  let matchId: string | null = null;
 
   // 1. Three-of-a-kind check (Seven, Emerald, Bar, Bell, Cherry)
   if (s0 === s1 && s1 === s2) {
     switch (s0) {
       case 'seven':
-        return {
-          multiplier: 500,
-          matchId: 'three_sevens',
-          matchDescription: '3x Lucky Seven',
-          won: true,
-        };
+        matchId = 'three_sevens';
+        break;
       case 'emerald':
-        return {
-          multiplier: 60,
-          matchId: 'three_emeralds',
-          matchDescription: '3x Emerald Gem',
-          won: true,
-        };
+        matchId = 'three_emeralds';
+        break;
       case 'bar':
-        return {
-          multiplier: 25,
-          matchId: 'three_bars',
-          matchDescription: '3x BAR Plate',
-          won: true,
-        };
+        matchId = 'three_bars';
+        break;
       case 'bell':
-        return {
-          multiplier: 8,
-          matchId: 'three_bells',
-          matchDescription: '3x Liberty Bell',
-          won: true,
-        };
+        matchId = 'three_bells';
+        break;
       case 'cherry':
-        return {
-          multiplier: 4,
-          matchId: 'three_cherries',
-          matchDescription: '3x Golden Cherries',
-          won: true,
-        };
+        matchId = 'three_cherries';
+        break;
       case 'blank':
       default:
         // 3 blanks do not pay
@@ -128,30 +109,32 @@ export function evaluateLine(
     }
   }
 
-  // Count occurrences of cherry on this payline
-  let cherryCount = 0;
-  for (let i = 0; i < symbolsOnLine.length; i++) {
-    if (symbolsOnLine[i] === 'cherry') cherryCount++;
+  if (!matchId) {
+    // Count occurrences of cherry on this payline
+    let cherryCount = 0;
+    for (let i = 0; i < symbolsOnLine.length; i++) {
+      if (symbolsOnLine[i] === 'cherry') cherryCount++;
+    }
+
+    // 2. Exactly two cherries anywhere on the payline
+    if (cherryCount === 2) {
+      matchId = 'two_cherries';
+    } else if (cherryCount === 1 && s0 === 'cherry') {
+      // 3. Cherry on Reel 1 only (exactly one cherry on the line, located at reel index 0)
+      matchId = 'one_cherry_reel_1';
+    }
   }
 
-  // 2. Exactly two cherries anywhere on the payline
-  if (cherryCount === 2) {
-    return {
-      multiplier: 2,
-      matchId: 'two_cherries',
-      matchDescription: 'Any 2 Cherries',
-      won: true,
-    };
-  }
-
-  // 3. Cherry on Reel 1 only (exactly one cherry on the line, located at reel index 0)
-  if (cherryCount === 1 && s0 === 'cherry') {
-    return {
-      multiplier: 1,
-      matchId: 'one_cherry_reel_1',
-      matchDescription: '1 Cherry on Reel 1',
-      won: true,
-    };
+  if (matchId) {
+    const payItem = config.paytable.find((p) => p.id === matchId);
+    if (payItem) {
+      return {
+        multiplier: payItem.multiplier,
+        matchId: payItem.id,
+        matchDescription: payItem.name,
+        won: payItem.multiplier > 0,
+      };
+    }
   }
 
   // 4. No paying combination

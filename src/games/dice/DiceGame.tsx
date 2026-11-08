@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GameProps, RoundResult } from '../../types/casino';
-import { useCasino } from '../../context/CasinoContext';
 import {
   BetType,
   BET_OPTIONS,
   resolveRoll,
   isValidBet,
+  calculateRtp,
   RollResolution,
 } from './diceRules';
 import { rollDie } from './rng';
@@ -79,10 +79,10 @@ export const DiceGame: React.FC<GameProps> = ({
   minBet,
   maxBet,
   settle,
+  animations,
 }) => {
-  const { settings } = useCasino();
   const [selectedBetType, setSelectedBetType] = useState<BetType>('low');
-  const [wager, setWager] = useState<number>(() => Math.max(minBet, Math.min(50, maxBet, balance)));
+  const [wager, setWager] = useState<number>(() => Math.floor(Math.max(minBet, Math.min(50, maxBet, balance)) / 10) * 10);
   const [dice, setDice] = useState<[number, number]>([3, 4]);
   const [isRolling, setIsRolling] = useState<boolean>(false);
   const [lastResult, setLastResult] = useState<{
@@ -110,10 +110,10 @@ export const DiceGame: React.FC<GameProps> = ({
     };
   }, []);
 
-  // Clamp wager if balance or table limits change
+  // Clamp wager if balance or table limits change, rounded down to multiple of 10
   useEffect(() => {
     if (balance > 0 && wager > balance) {
-      setWager(Math.max(minBet, balance));
+      setWager(Math.floor(Math.max(minBet, balance) / 10) * 10);
     }
   }, [balance, minBet, wager]);
 
@@ -127,7 +127,7 @@ export const DiceGame: React.FC<GameProps> = ({
   const handleSelectChip = (amount: number) => {
     if (isRolling || rollingRef.current) return;
     soundManager.playClick();
-    const clamped = Math.max(minBet, Math.min(amount, maxBet, balance));
+    const clamped = Math.floor(Math.max(minBet, Math.min(amount, maxBet, balance)) / 10) * 10;
     setWager(clamped);
     setErrorMsg(null);
   };
@@ -135,7 +135,8 @@ export const DiceGame: React.FC<GameProps> = ({
   const adjustWager = (delta: number) => {
     if (isRolling || rollingRef.current) return;
     soundManager.playClick();
-    const newBet = Math.max(minBet, Math.min(wager + delta, maxBet, balance));
+    const raw = Math.max(minBet, Math.min(wager + delta, maxBet, balance));
+    const newBet = Math.floor(raw / 10) * 10;
     setWager(newBet);
     setErrorMsg(null);
   };
@@ -165,7 +166,7 @@ export const DiceGame: React.FC<GameProps> = ({
     const resolution = resolveRoll(selectedBetType, finalD1, finalD2, wager);
 
     // 5. Check if animations are enabled
-    const useAnimation = settings.animations !== false;
+    const useAnimation = animations !== false;
 
     if (!useAnimation) {
       // Instant settlement
@@ -251,14 +252,14 @@ export const DiceGame: React.FC<GameProps> = ({
             <DieFace value={dice[1]} isRolling={isRolling} />
           </div>
 
-          {/* Roll Total Pill */}
+          {/* Roll Total Pill: neutral '--' before first roll */}
           <div className="mt-2 flex items-center justify-center">
             <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#141d2a]/95 border border-slate-800 text-[11px] font-mono shadow-xs">
               <span className="text-slate-400 uppercase text-[10px]">Total:</span>
               <span className="font-bold text-emerald-400 tabular-nums">
-                {isRolling ? '...' : dice[0] + dice[1]}
+                {isRolling ? '...' : lastResult ? dice[0] + dice[1] : '--'}
               </span>
-              {!isRolling && (
+              {!isRolling && lastResult && (
                 <span className="text-slate-400 text-[10px]">
                   ({dice[0]} + {dice[1]})
                 </span>
@@ -347,7 +348,7 @@ export const DiceGame: React.FC<GameProps> = ({
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-1">
-                  <span>Chance {opt.probability}</span>
+                  <span>{opt.probability} · RTP {(calculateRtp(opt.type) * 100).toFixed(1)}%</span>
                   {isSelected && <span className="text-emerald-400 text-[10px] font-bold">Active</span>}
                 </div>
               </button>
@@ -415,10 +416,10 @@ export const DiceGame: React.FC<GameProps> = ({
             );
           })}
 
-          {/* MAX Button */}
+          {/* MAX Button (rounded down to step of 10) */}
           <button
             type="button"
-            onClick={() => handleSelectChip(Math.min(maxBet, balance))}
+            onClick={() => handleSelectChip(Math.floor(Math.min(maxBet, balance) / 10) * 10)}
             disabled={isRolling || balance < minBet}
             className="min-h-[44px] px-3.5 rounded-lg text-xs font-sans font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40 transition-colors shrink-0 flex items-center justify-center"
           >

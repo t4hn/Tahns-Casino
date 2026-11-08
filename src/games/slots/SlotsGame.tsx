@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GameProps, RoundResult } from '../../types/casino';
-import { useCasino } from '../../context/CasinoContext';
 import {
   DEFAULT_SLOTS_CONFIG,
   SymbolId,
@@ -10,6 +9,7 @@ import {
   evaluateSpin,
   getWindow,
   calculateRtp,
+  calculateHitStats,
   SpinEvaluation,
 } from './slotsRules';
 import { randomInt } from '../shared/rng';
@@ -170,41 +170,62 @@ export const SlotsGame: React.FC<GameProps> = ({
   balance,
   minBet,
   maxBet,
-  settle,
+  placeBet,
+  resolveRound,
+  animations,
 }) => {
-  const { settings } = useCasino();
   const config: SlotsConfig = DEFAULT_SLOTS_CONFIG;
 
-  const [wager, setWager] = useState<number>(() => Math.max(minBet, Math.min(50, maxBet, balance)));
-  const [stops, setStops] = useState<[number, number, number]>([13, 10, 5]); // Initial display: 7-7-7
+  const [wager, setWager] = useState<number>(() =>
+    Math.floor(Math.max(minBet, Math.min(50, maxBet, balance)) / 10) * 10
+  );
+  // Neutral no-win starting stops [4, 2, 3] (blank, blank, blank on center payline)
+  const [stops, setStops] = useState<[number, number, number]>([4, 2, 3]);
   const [reelSpinning, setReelSpinning] = useState<[boolean, boolean, boolean]>([false, false, false]);
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
   const [lastResult, setLastResult] = useState<SpinEvaluation | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Double-tap ref guard
+  // Double-tap ref guard and escrow unmount resolution ref
   const spinningRef = useRef<boolean>(false);
+  const pendingResolutionRef = useRef<{
+    wager: number;
+    payout: number;
+    spinEval: SpinEvaluation;
+  } | null>(null);
   const intervalsRef = useRef<number[]>([]);
   const timeoutsRef = useRef<number[]>([]);
 
-  // Cleanup timers on unmount
+  // Cleanup timers on unmount and resolve any pending escrow spin immediately
   useEffect(() => {
     return () => {
       intervalsRef.current.forEach(clearInterval);
       timeoutsRef.current.forEach(clearTimeout);
-    };
-  }, []);
 
-  // Clamp wager if balance changes
+      // If the component unmounts mid-spin, resolve immediately with the already-decided payout
+      if (pendingResolutionRef.current) {
+        const { wager: pendingWager, payout: pendingPayout } = pendingResolutionRef.current;
+        pendingResolutionRef.current = null;
+        resolveRound(pendingWager, pendingPayout);
+      }
+    };
+  }, [resolveRound]);
+
+  // Clamp wager if balance changes, rounded down to multiple of 10
   useEffect(() => {
     if (balance > 0 && wager > balance) {
-      setWager(Math.max(minBet, balance));
+      setWager(Math.floor(Math.max(minBet, balance) / 10) * 10);
     }
   }, [balance, minBet, wager]);
 
   // Derived theoretical RTP for paytable display
   const rtpPercent = useMemo(() => {
     return (calculateRtp(config) * 100).toFixed(1);
+  }, [config]);
+
+  // Dynamic hit stats calculated directly from config
+  const hitStats = useMemo(() => {
+    return calculateHitStats(config);
   }, [config]);
 
   // Derive visible 3x3 window symbols from current stops
@@ -215,7 +236,7 @@ export const SlotsGame: React.FC<GameProps> = ({
   const handleSelectChip = (amount: number) => {
     if (isSpinning || spinningRef.current) return;
     soundManager.playClick();
-    const clamped = Math.max(minBet, Math.min(amount, maxBet, balance));
+    const clamped = Math.floor(Math.max(minBet, Math.min(amount, maxBet, balance)) / 10) * 10;
     setWager(clamped);
     setErrorMsg(null);
   };
@@ -223,7 +244,8 @@ export const SlotsGame: React.FC<GameProps> = ({
   const adjustWager = (delta: number) => {
     if (isSpinning || spinningRef.current) return;
     soundManager.playClick();
-    const newBet = Math.max(minBet, Math.min(wager + delta, maxBet, balance));
+    const raw = Math.max(minBet, Math.min(wager + delta, maxBet, balance));
+    const newBet = Math.floor(raw / 10) * 10;
     setWager(newBet);
     setErrorMsg(null);
   };
@@ -232,7 +254,7 @@ export const SlotsGame: React.FC<GameProps> = ({
     // 1. Guard against double-tap or active spinning
     if (spinningRef.current || isSpinning) return;
 
-    // 2. Validate bet against bankroll and limits
+    // 2. Validate bet against bankroll and limits (steps of 10 enforced)
     const validation = isValidBet(wager, minBet, maxBet, balance);
     if (!validation.valid) {
       soundManager.playLocked();
@@ -240,14 +262,22 @@ export const SlotsGame: React.FC<GameProps> = ({
       return;
     }
 
-    // 3. Mark spinning state atomically
+    // 3. Atomically deduct wager into escrow BEFORE any animation
+    const betResult = placeBet(wager);
+    if (!betResult.success) {
+      soundManager.playLocked();
+      setErrorMsg(betResult.error || 'Failed to place wager.');
+      return;
+    }
+
+    // 4. Mark spinning state atomically
     spinningRef.current = true;
     setIsSpinning(true);
     setErrorMsg(null);
     setLastResult(null); // Clear previous result at start of new spin
     soundManager.playClick();
 
-    // 4. Compute full outcome BEFORE any animation (no engineered near-misses)
+    // 5. Compute full outcome BEFORE any animation (no engineered near-misses)
     const nextStops: [number, number, number] = [
       randomInt(config.stopsPerReel),
       randomInt(config.stopsPerReel),
@@ -255,18 +285,26 @@ export const SlotsGame: React.FC<GameProps> = ({
     ];
     const spinEval = evaluateSpin(nextStops, wager, config);
 
-    // 5. Check if animations are enabled
-    const useAnimation = settings.animations !== false;
+    // Store pending resolution in ref for safe resolution on unmount
+    pendingResolutionRef.current = {
+      wager,
+      payout: spinEval.payout,
+      spinEval,
+    };
+
+    // 6. Check if animations are enabled
+    const useAnimation = animations !== false;
 
     if (!useAnimation) {
       // Instant settlement
       setStops(nextStops);
       setReelSpinning([false, false, false]);
 
-      const roundRes: RoundResult = settle(wager, spinEval.payout);
+      pendingResolutionRef.current = null;
+      const roundRes: RoundResult = resolveRound(wager, spinEval.payout);
 
       if (!roundRes.success) {
-        setErrorMsg(roundRes.error || 'Failed to settle spin round.');
+        setErrorMsg(roundRes.error || 'Failed to resolve spin round.');
       } else {
         if (spinEval.won) {
           soundManager.playCoin();
@@ -279,7 +317,7 @@ export const SlotsGame: React.FC<GameProps> = ({
       return;
     }
 
-    // 6. Sequential animated reel spin (stopping left-to-right: ~600ms, ~900ms, ~1200ms)
+    // 7. Sequential animated reel spin (stopping left-to-right: ~600ms, ~900ms, ~1200ms)
     setReelSpinning([true, true, true]);
 
     // Cycling intervals for all 3 reels while spinning
@@ -321,17 +359,21 @@ export const SlotsGame: React.FC<GameProps> = ({
         // Click / tick sound on reel lock
         soundManager.playClick();
 
-        // When the final reel (Reel 2) stops, settle atomically once
+        // When the final reel (Reel 2) stops, resolve round exactly once
         if (reelIdx === 2) {
-          const roundRes: RoundResult = settle(wager, spinEval.payout);
+          const pending = pendingResolutionRef.current;
+          if (pending) {
+            pendingResolutionRef.current = null;
+            const roundRes: RoundResult = resolveRound(pending.wager, pending.payout);
 
-          if (!roundRes.success) {
-            setErrorMsg(roundRes.error || 'Failed to settle spin round.');
-          } else {
-            if (spinEval.won) {
-              soundManager.playCoin();
+            if (!roundRes.success) {
+              setErrorMsg(roundRes.error || 'Failed to resolve spin round.');
+            } else {
+              if (pending.spinEval.won) {
+                soundManager.playCoin();
+              }
+              setLastResult(pending.spinEval);
             }
-            setLastResult(spinEval);
           }
 
           setIsSpinning(false);
@@ -516,10 +558,10 @@ export const SlotsGame: React.FC<GameProps> = ({
             );
           })}
 
-          {/* MAX Button */}
+          {/* MAX Button (rounded down to step of 10) */}
           <button
             type="button"
-            onClick={() => handleSelectChip(Math.min(maxBet, balance))}
+            onClick={() => handleSelectChip(Math.floor(Math.min(maxBet, balance) / 10) * 10)}
             disabled={isSpinning || balance < minBet}
             className="min-h-[44px] px-3.5 rounded-lg text-xs font-sans font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-40 transition-colors shrink-0 flex items-center justify-center"
           >
@@ -544,7 +586,9 @@ export const SlotsGame: React.FC<GameProps> = ({
         <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-2 text-[11px]">
           <div className="grid grid-cols-1 gap-1.5">
             {config.paytable.map((item) => {
-              const oddsPercent = ((item.expectedHits / 8000) * 100).toFixed(item.expectedHits < 10 ? 2 : 1);
+              const hits = hitStats.hitsByMatch[item.id] || 0;
+              const oneInN = hits > 0 ? Math.round(hitStats.totalSpins / hits) : 0;
+              const oddsPercent = ((hits / hitStats.totalSpins) * 100).toFixed(hits < 10 ? 2 : 1);
               return (
                 <div
                   key={item.id}
@@ -559,7 +603,7 @@ export const SlotsGame: React.FC<GameProps> = ({
                       {item.multiplier}x
                     </span>
                     <span className="font-mono text-[10px] text-slate-500">
-                      {item.expectedHits}/8,000 ({oddsPercent}%)
+                      {hits}/8,000 (1 in {oneInN.toLocaleString()} · {oddsPercent}%)
                     </span>
                   </div>
                 </div>

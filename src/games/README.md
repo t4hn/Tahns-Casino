@@ -17,7 +17,7 @@ export interface GameProps {
   /** Table maximum wager */
   maxBet: number;
   /**
-   * Atomic round settlement callback.
+   * Single-shot atomic round settlement callback.
    * Atomically debits bet, credits payout, updates wins/losses/XP,
    * checks for level-ups, and prevents overdraft.
    * NOTE: 'payout' is the TOTAL returned amount including the stake.
@@ -25,6 +25,19 @@ export interface GameProps {
    * A loss returns payout === 0 (net = -bet).
    */
   settle: (bet: number, payout: number) => RoundResult;
+  /**
+   * Escrow bet placement callback.
+   * Immediately deducts the wager from patron bankroll before animations start.
+   */
+  placeBet: (bet: number) => { success: boolean; error?: string };
+  /**
+   * Escrow round resolution callback.
+   * Credits payout, updates statistics, awards XP, and checks level-ups.
+   * Called when animations conclude or on unmount mid-spin.
+   */
+  resolveRound: (bet: number, payout: number) => RoundResult;
+  /** Whether visual animations are enabled in player preferences */
+  animations: boolean;
 }
 
 export interface GameModule {
@@ -102,3 +115,5 @@ Once registered:
 3. **Net Accounting**: Total winnings and losses are tracked strictly by net round results (`net = payout - bet`).
 4. **Resolution Guard**: Mini-games must disable their Roll/Play buttons while a round is actively rolling or resolving (using ref guards to reject rapid double-taps).
 5. **Atomic Progression**: XP is credited via `applyXp`, automatically awarding level promotion bonuses for every tier threshold crossed.
+6. **Escrow & Mid-Spin Unmount Resolution**: Games with animations must place the wager into escrow via `placeBet(bet)` before starting animations. If the player leaves the game before the animation concludes, the component's unmount cleanup handler must immediately invoke `resolveRound(wager, payout)` with the predetermined outcome so credits are never lost or left in dangling escrow.
+7. **No Direct Context Access**: Games must remain decoupled from global state by receiving all bankroll parameters, callbacks (`settle`, `placeBet`, `resolveRound`), and `animations` through `GameProps`. Mini-games must not call `useCasino()`.

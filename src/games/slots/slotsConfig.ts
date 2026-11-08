@@ -56,7 +56,7 @@ export interface PaytableItem {
   name: string;
   multiplier: number;
   description: string;
-  expectedHits: number;
+  expectedHits?: number;
 }
 
 export interface Payline {
@@ -107,49 +107,42 @@ export const SLOTS_PAYTABLE: PaytableItem[] = [
     name: '3x Lucky Seven',
     multiplier: 500,
     description: '7 · 7 · 7 on the center payline',
-    expectedHits: 1,
   },
   {
     id: 'three_emeralds',
     name: '3x Emerald Gem',
     multiplier: 60,
     description: 'Emerald · Emerald · Emerald',
-    expectedHits: 8,
   },
   {
     id: 'three_bars',
     name: '3x BAR Plate',
     multiplier: 25,
     description: 'BAR · BAR · BAR',
-    expectedHits: 27,
   },
   {
     id: 'three_bells',
     name: '3x Liberty Bell',
     multiplier: 8,
     description: 'Bell · Bell · Bell',
-    expectedHits: 125,
   },
   {
     id: 'three_cherries',
     name: '3x Golden Cherries',
     multiplier: 4,
     description: 'Cherry · Cherry · Cherry',
-    expectedHits: 216,
   },
   {
     id: 'two_cherries',
     name: 'Any 2 Cherries',
     multiplier: 2,
     description: 'Exactly 2 Cherries anywhere on payline',
-    expectedHits: 1512,
   },
   {
     id: 'one_cherry_reel_1',
     name: '1 Cherry on Reel 1',
     multiplier: 1,
     description: 'Cherry on Reel 1 only (stake returned)',
-    expectedHits: 1176,
   },
 ];
 

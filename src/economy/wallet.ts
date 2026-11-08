@@ -159,57 +159,35 @@ export function applyXp(profile: WalletProfile, amount: number): XpResult {
 }
 
 /**
- * Pure function: settles a game round atomically.
- * - Deducts bet and adds payout atomically: newCredits = profile.credits - bet + payout.
- * - Refuses any wager that exceeds balance or is <= 0.
- * - Increments gamesPlayed.
- * - Updates totalWinnings and totalLosses by NET result.
- * - Awards XP via applyXp so level-ups always trigger.
+ * Pure function: places a wager into escrow by deducting bet from balance.
+ * Credits must never become negative.
  */
-export function settleRound(
+export function placeBet(
+  profile: WalletProfile,
+  bet: number
+): { profile: WalletProfile; success: boolean; error?: string } {
+  return applyWager(profile, bet);
+}
+
+/**
+ * Pure function: resolves an in-flight round after placeBet has deducted the wager.
+ * - Credits the payout amount to balance.
+ * - Increments gamesPlayed.
+ * - Updates totalWinnings and totalLosses by net result (net = payout - bet).
+ * - Awards XP via applyXp so level-ups and promotion credits trigger.
+ */
+export function resolveRound(
   profile: WalletProfile,
   bet: number,
   payout: number,
   customXp?: number
 ): { profile: WalletProfile; result: SettleResult } {
-  if (bet <= 0) {
-    return {
-      profile,
-      result: {
-        success: false,
-        won: false,
-        net: 0,
-        bet,
-        payout: 0,
-        xpGained: 0,
-        leveledUp: false,
-        error: 'Wager must be greater than zero.',
-      },
-    };
-  }
-
-  if (profile.credits < bet) {
-    return {
-      profile,
-      result: {
-        success: false,
-        won: false,
-        net: 0,
-        bet,
-        payout: 0,
-        xpGained: 0,
-        leveledUp: false,
-        error: 'Insufficient credits for this wager.',
-      },
-    };
-  }
-
   const safePayout = Math.max(0, Math.round(payout || 0));
   const net = safePayout - bet;
   const won = net > 0;
 
-  // Atomically calculate new credits without ever going negative
-  const creditsAfterRound = Math.max(0, profile.credits - bet + safePayout);
+  // Since bet was already deducted by placeBet, we credit safePayout
+  const creditsAfterRound = Math.max(0, profile.credits + safePayout);
 
   // Update totals by net result
   const totalWinningsDelta = net > 0 ? net : 0;
@@ -248,6 +226,39 @@ export function settleRound(
       promotionCredits: xpResult.promotionCredits,
     },
   };
+}
+
+/**
+ * Pure function: settles a game round atomically by chaining placeBet then resolveRound.
+ * - Refuses any wager that exceeds balance or is <= 0.
+ * - Atomically deducts bet, adds payout, increments gamesPlayed.
+ * - Updates totalWinnings and totalLosses by NET result.
+ * - Awards XP via applyXp so level-ups always trigger.
+ */
+export function settleRound(
+  profile: WalletProfile,
+  bet: number,
+  payout: number,
+  customXp?: number
+): { profile: WalletProfile; result: SettleResult } {
+  const betRes = placeBet(profile, bet);
+  if (!betRes.success) {
+    return {
+      profile,
+      result: {
+        success: false,
+        won: false,
+        net: 0,
+        bet,
+        payout: 0,
+        xpGained: 0,
+        leveledUp: false,
+        error: betRes.error,
+      },
+    };
+  }
+
+  return resolveRound(betRes.profile, bet, payout, customXp);
 }
 
 /**

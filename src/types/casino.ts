@@ -9,6 +9,9 @@ export interface GameProps {
   minBet: number;
   maxBet: number;
   settle: (bet: number, payout: number) => RoundResult;
+  placeBet: (bet: number) => { success: boolean; error?: string };
+  resolveRound: (bet: number, payout: number) => RoundResult;
+  animations: boolean;
 }
 
 export interface GameModule {

@@ -192,6 +192,16 @@ describe('Dice Mini-Game Rules & Mechanics', () => {
       expect(res.reason).toMatch(/cannot exceed/i);
     });
 
+    it('rejects bets that are not multiples of 10 (e.g. 15 and 237)', () => {
+      const res15 = isValidBet(15, minBet, maxBet, balance);
+      expect(res15.valid).toBe(false);
+      expect(res15.reason).toBe('Wagers must be in steps of 10.');
+
+      const res237 = isValidBet(237, minBet, maxBet, balance);
+      expect(res237.valid).toBe(false);
+      expect(res237.reason).toBe('Wagers must be in steps of 10.');
+    });
+
     it('accepts valid bets within boundaries', () => {
       expect(isValidBet(10, minBet, maxBet, balance).valid).toBe(true);
       expect(isValidBet(100, minBet, maxBet, balance).valid).toBe(true);

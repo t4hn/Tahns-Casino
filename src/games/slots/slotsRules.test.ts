@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   DEFAULT_SLOTS_CONFIG,
   SlotsConfig,
@@ -11,7 +11,13 @@ import {
   calculateHitStats,
 } from './slotsRules';
 import { randomInt } from '../shared/rng';
-import { settleRound, WalletProfile } from '../../economy/wallet';
+import {
+  settleRound,
+  placeBet,
+  resolveRound,
+  applyDailyBonus,
+  WalletProfile,
+} from '../../economy/wallet';
 
 const createMockProfile = (overrides: Partial<WalletProfile> = {}): WalletProfile => ({
   id: 'test_patron',
@@ -194,6 +200,140 @@ describe('Lucky Slots Rules & Math Engine', () => {
       expect(updated.credits).toBe(950);
       expect(updated.totalLosses).toBe(50);
       expect(updated.gamesPlayed).toBe(6);
+    });
+  });
+
+  describe('Single Source of Truth: Config-Driven Multipliers & Names', () => {
+    it('modifying a multiplier in a cloned config alters both payouts and paytable display data', () => {
+      // Clone default config and modify the 3-sevens multiplier and name
+      const clonedConfig: SlotsConfig = {
+        ...DEFAULT_SLOTS_CONFIG,
+        paytable: DEFAULT_SLOTS_CONFIG.paytable.map((item) =>
+          item.id === 'three_sevens'
+            ? { ...item, multiplier: 777, name: 'Grand Jackpot' }
+            : { ...item }
+        ),
+      };
+
+      const stops = [13, 10, 5]; // 3 sevens on center payline
+      const bet = 100;
+
+      // 1. Default config check
+      const defaultSpin = evaluateSpin(stops, bet, DEFAULT_SLOTS_CONFIG);
+      expect(defaultSpin.totalMultiplier).toBe(500);
+      expect(defaultSpin.payout).toBe(50000);
+      expect(defaultSpin.lines[0].matchDescription).toBe('3x Lucky Seven');
+
+      // 2. Cloned config check: evaluateSpin must directly use the modified 777x multiplier & name
+      const customSpin = evaluateSpin(stops, bet, clonedConfig);
+      expect(customSpin.totalMultiplier).toBe(777);
+      expect(customSpin.payout).toBe(77700);
+      expect(customSpin.lines[0].matchDescription).toBe('Grand Jackpot');
+
+      // 3. Cloned config's paytable display item reflects the update
+      const payItem = clonedConfig.paytable.find((p) => p.id === 'three_sevens')!;
+      expect(payItem.multiplier).toBe(777);
+      expect(payItem.name).toBe('Grand Jackpot');
+    });
+
+    it('calculates hit stats dynamically from any custom or cloned config', () => {
+      const stats = calculateHitStats(DEFAULT_SLOTS_CONFIG);
+      expect(stats.totalSpins).toBe(8000);
+      expect(stats.hitsByMatch['three_sevens']).toBe(1);
+      expect(stats.hitsByMatch['three_emeralds']).toBe(8);
+      expect(stats.hitsByMatch['three_bars']).toBe(27);
+    });
+  });
+
+  describe('Escrow & Unmount Resolution with Fake Timers', () => {
+    it('resolves immediately with already-decided payout when unmounted mid-spin', () => {
+      vi.useFakeTimers();
+
+      let patron = createMockProfile({ credits: 1000, gamesPlayed: 0 });
+      const bet = 50;
+
+      // 1. placeBet deducts the bet into escrow
+      const betRes = placeBet(patron, bet);
+      expect(betRes.success).toBe(true);
+      patron = betRes.profile;
+      expect(patron.credits).toBe(950);
+
+      // 2. Predetermined outcome: 3 bells (8x multiplier -> payout 400)
+      const winningStops = [1, 0, 2];
+      const spinEval = evaluateSpin(winningStops, bet, DEFAULT_SLOTS_CONFIG);
+      expect(spinEval.payout).toBe(400);
+
+      // Emulate SlotsGame pending resolution ref and timer handles
+      let pendingResolution: { wager: number; payout: number } | null = {
+        wager: bet,
+        payout: spinEval.payout,
+      };
+      let resolvedCount = 0;
+
+      const finishResolution = (wagerAmount: number, payoutAmount: number) => {
+        resolvedCount++;
+        const res = resolveRound(patron, wagerAmount, payoutAmount);
+        patron = res.profile;
+        return res;
+      };
+
+      // Animation timer scheduled to resolve in 1200ms
+      const timerId = setTimeout(() => {
+        if (pendingResolution) {
+          const { wager: w, payout: p } = pendingResolution;
+          pendingResolution = null;
+          finishResolution(w, p);
+        }
+      }, 1200);
+
+      // Advance time by 400ms (mid-spin)
+      vi.advanceTimersByTime(400);
+      expect(resolvedCount).toBe(0);
+      expect(patron.credits).toBe(950);
+
+      // Component unmount cleanup triggers: cancels timer and resolves immediately
+      clearTimeout(timerId);
+      if (pendingResolution) {
+        const { wager: w, payout: p } = pendingResolution;
+        pendingResolution = null;
+        finishResolution(w, p);
+      }
+
+      expect(resolvedCount).toBe(1);
+      // Balance is credited with the 400 payout: 950 + 400 = 1350
+      expect(patron.credits).toBe(1350);
+      expect(patron.gamesPlayed).toBe(1);
+
+      // Advance timers past 1200ms to guarantee no double-resolution
+      vi.advanceTimersByTime(2000);
+      expect(resolvedCount).toBe(1);
+      expect(patron.credits).toBe(1350);
+
+      vi.useRealTimers();
+    });
+
+    it('preserves daily bonus applied between placeBet and resolveRound', () => {
+      const initialProfile = createMockProfile({ credits: 1000, gamesPlayed: 0 });
+      const bet = 100;
+
+      // 1. placeBet deducts wager into escrow
+      const betRes = placeBet(initialProfile, bet);
+      expect(betRes.success).toBe(true);
+      expect(betRes.profile.credits).toBe(900);
+
+      // 2. Daily bonus claimed mid-spin (+1,000 credits & +200 XP)
+      const bonusRes = applyDailyBonus(betRes.profile, 1000, 200);
+      expect(bonusRes.profile.credits).toBe(1900);
+
+      // 3. Round resolves with win (e.g. payout 250 on a 100 bet -> net +150)
+      const resolveRes = resolveRound(bonusRes.profile, bet, 250);
+      expect(resolveRes.result.success).toBe(true);
+      expect(resolveRes.result.net).toBe(150);
+      expect(resolveRes.result.payout).toBe(250);
+
+      // Balance: 900 (after bet) + 1000 (daily bonus) + 250 (payout) = 2150
+      expect(resolveRes.profile.credits).toBe(2150);
+      expect(resolveRes.profile.gamesPlayed).toBe(1);
     });
   });
 });
