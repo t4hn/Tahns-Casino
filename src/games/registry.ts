@@ -5,6 +5,7 @@ import { calculateRtp } from './dice/diceRules';
 import { DiceGame } from './dice/DiceGame';
 import { calculateAnalyticalRtp as calculateSlotsRtp } from './slots/slotsRules';
 import { DEFAULT_SLOTS_CONFIG, SlotsConfig } from './slots/slotsConfig';
+import { NOVA_VOYAGER_CONFIG } from './slots/novaVoyagerConfig';
 import { SlotsGame } from './slots/SlotsGame';
 import { SlotMachine } from './slots/SlotMachine';
 
@@ -189,4 +190,19 @@ registerGameModule({
   id: 'lucky-slots',
   component: SlotsGame,
 });
+
+registerSlotMachine(
+  {
+    id: 'nova-voyager',
+    name: 'Nova Voyager',
+    category: 'Slots',
+    volatility: 'High',
+    minLevel: 2,
+    minBet: 10,
+    maxBet: 200,
+    description: 'Deep space 5-reel voyage featuring 10 active paylines, roaming comet wilds, and astronomical line multipliers.',
+    imageUrl: '/images/game_nova_voyager.jpg',
+  },
+  NOVA_VOYAGER_CONFIG
+);
 

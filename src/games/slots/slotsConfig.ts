@@ -3,7 +3,21 @@
  * No React, no logic, no side-effects. Easy to extend to many reels & paylines.
  */
 
-export type SymbolId = 'seven' | 'emerald' | 'bar' | 'bell' | 'cherry' | 'blank';
+export type SymbolId =
+  | 'seven'
+  | 'emerald'
+  | 'bar'
+  | 'bell'
+  | 'cherry'
+  | 'blank'
+  | 'galaxy'
+  | 'planet'
+  | 'rocket'
+  | 'alien'
+  | 'moon'
+  | 'star'
+  | 'meteor'
+  | 'comet';
 
 export interface SymbolMeta {
   id: SymbolId;
@@ -49,6 +63,54 @@ export const SYMBOL_METADATA: Record<SymbolId, SymbolMeta> = {
     shortName: '—',
     badgeColor: 'text-slate-600',
   },
+  galaxy: {
+    id: 'galaxy',
+    name: 'Spiral Galaxy',
+    shortName: 'Galaxy',
+    badgeColor: 'text-purple-400',
+  },
+  planet: {
+    id: 'planet',
+    name: 'Ringed Planet',
+    shortName: 'Planet',
+    badgeColor: 'text-amber-400',
+  },
+  rocket: {
+    id: 'rocket',
+    name: 'Cosmic Rocket',
+    shortName: 'Rocket',
+    badgeColor: 'text-rose-400',
+  },
+  alien: {
+    id: 'alien',
+    name: 'Martian Traveler',
+    shortName: 'Alien',
+    badgeColor: 'text-emerald-400',
+  },
+  moon: {
+    id: 'moon',
+    name: 'Crescent Moon',
+    shortName: 'Moon',
+    badgeColor: 'text-cyan-300',
+  },
+  star: {
+    id: 'star',
+    name: 'Radiant Star',
+    shortName: 'Star',
+    badgeColor: 'text-yellow-300',
+  },
+  meteor: {
+    id: 'meteor',
+    name: 'Blazing Meteor',
+    shortName: 'Meteor',
+    badgeColor: 'text-orange-400',
+  },
+  comet: {
+    id: 'comet',
+    name: 'Comet Wild',
+    shortName: 'WILD',
+    badgeColor: 'text-teal-300',
+  },
 };
 
 export interface PaytableItem {
@@ -57,6 +119,7 @@ export interface PaytableItem {
   multiplier: number;
   description: string;
   expectedHits?: number;
+  symbol?: SymbolId;
 }
 
 export interface Payline {

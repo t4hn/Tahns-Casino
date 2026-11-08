@@ -44,8 +44,11 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     Math.floor(Math.max(minBet, Math.min(50, maxBet, balance)) / 10) * 10
   );
 
-  // Initial neutral stops [4, 2, 3, ...] (blanks on center payline if available)
+  // Initial neutral stops: [0, 5, 10, 15, 20] for 5-reel Nova Voyager (0 payline wins), or [4, 2, 3] for Lucky Slots
   const [stops, setStops] = useState<number[]>(() => {
+    if (config.reelsCount === 5) {
+      return [0, 5, 10, 15, 20];
+    }
     return Array.from({ length: numReels }, (_, i) => {
       const defaultStops = [4, 2, 3];
       const fallback = defaultStops[i % defaultStops.length];
@@ -59,6 +62,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
   const [isSpinning, setIsSpinning] = useState<boolean>(false);
   const [lastResult, setLastResult] = useState<SpinEvaluation | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activeWinLineIndex, setActiveWinLineIndex] = useState<number>(0);
 
   // Double-tap ref guard and escrow unmount resolution ref
   const spinningRef = useRef<boolean>(false);
@@ -91,6 +95,28 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     };
   }, []);
 
+  const isMultiLine = config.paylines.length > 1;
+
+  // Cycle through multiple winning paylines every 1.5s
+  useEffect(() => {
+    if (!lastResult?.won || isSpinning || !isMultiLine) {
+      setActiveWinLineIndex(0);
+      return;
+    }
+
+    const winningLines = lastResult.lines.filter((l) => l.won);
+    if (winningLines.length <= 1) {
+      setActiveWinLineIndex(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setActiveWinLineIndex((prev) => (prev + 1) % winningLines.length);
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [lastResult, isSpinning, isMultiLine]);
+
   // Clamp wager if balance changes, rounded down to multiple of 10
   useEffect(() => {
     if (balance > 0 && wager > balance) {
@@ -107,6 +133,14 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
   const matchOdds = useMemo(() => {
     return calculateMatchOdds(config);
   }, [config]);
+
+  // Presets adapting to maxBet
+  const chipPresets = useMemo(() => {
+    if (maxBet <= 200) {
+      return [10, 20, 50, 100, 200].filter((p) => p >= minBet && p <= maxBet);
+    }
+    return CHIP_PRESETS.filter((p) => p >= minBet && p <= maxBet);
+  }, [minBet, maxBet]);
 
   // Derive visible window symbols from current stops
   const currentWindow = useMemo(() => {
@@ -159,6 +193,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     setIsSpinning(true);
     setErrorMsg(null);
     setLastResult(null); // Clear previous result at start of new spin
+    setActiveWinLineIndex(0);
     soundManager.playClick();
 
     // Store pending resolution in ref for safe resolution on unmount
@@ -193,7 +228,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
       return;
     }
 
-    // 7. Sequential animated reel spin (stopping left-to-right: ~600ms, ~900ms, ~1200ms...)
+    // 7. Sequential animated reel spin (stops at 600, 800, 1000, 1200, 1400ms for 5-reels; 600, 900, 1200ms for 3-reels)
     setReelSpinning(new Array(numReels).fill(true));
 
     // Cycling intervals for all reels while spinning
@@ -211,11 +246,12 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     }
     intervalsRef.current = intervals;
 
-    const baseDelay = 600;
-    const stepDelay = 300;
+    const reelDelays = numReels === 5
+      ? [600, 800, 1000, 1200, 1400]
+      : Array.from({ length: numReels }, (_, idx) => 600 + idx * 300);
 
     stopsLengths.forEach((_, reelIdx) => {
-      const delay = baseDelay + reelIdx * stepDelay;
+      const delay = reelDelays[reelIdx] ?? (600 + reelIdx * 250);
       const timeoutId = window.setTimeout(() => {
         // Stop reel interval
         if (intervalsRef.current[reelIdx]) {
@@ -264,68 +300,140 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     });
   };
 
-  const winningLine = lastResult?.lines[0];
+  // Winning lines and active winning line
+  const winningLines = lastResult?.won ? lastResult.lines.filter((l) => l.won) : [];
+  const currentActiveWinLine = winningLines[activeWinLineIndex] || winningLines[0];
+  const singleWinningLine = lastResult?.lines[0];
 
   return (
     <div className="w-full max-w-lg mx-auto space-y-3.5 pb-6">
       {/* ── Sticky Top Panel: Reel Window + Result Strip + Spin Button ── */}
-      <div className="sticky top-16 z-30 overflow-hidden rounded-2xl bg-[#0c121a]/95 backdrop-blur-md border border-emerald-500/30 p-3 sm:p-4 shadow-xl">
-        {/* Table felt glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.06)_0%,transparent_70%)] pointer-events-none" />
+      <div className={`sticky top-16 z-30 overflow-hidden rounded-2xl bg-[#0c121a]/95 backdrop-blur-md border ${
+        numReels === 5 ? 'border-indigo-500/30' : 'border-emerald-500/30'
+      } p-3 sm:p-4 shadow-xl`}>
+        {/* Ambient glow */}
+        <div
+          className={`absolute inset-0 pointer-events-none ${
+            numReels === 5
+              ? 'bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.08)_0%,transparent_70%)]'
+              : 'bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.06)_0%,transparent_70%)]'
+          }`}
+        />
 
         <div className="relative flex flex-col items-center">
-          {/* Reel Machine Frame */}
-          <div className="relative w-full max-w-[320px] sm:max-w-[360px] rounded-xl bg-gradient-to-b from-[#090d13] via-[#0e1520] to-[#070b10] border-2 border-slate-800 p-2 sm:p-2.5 shadow-inner">
-            {/* Payline Indicator Markers (Left & Right) */}
-            <div className="absolute left-1 top-1/2 -translate-y-1/2 z-20 flex items-center">
-              <div className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/80 text-[8px] font-mono font-bold text-amber-300">
-                LINE
-              </div>
+          {/* Multi-line badge for 10-line machines */}
+          {isMultiLine && (
+            <div className="mb-1.5 flex items-center gap-2 text-[10px] font-mono font-semibold text-indigo-300">
+              <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/40">
+                {config.paylines.length} FIXED LINES
+              </span>
+              <span className="text-slate-400">
+                {Math.floor(wager / config.paylines.length)} CREDITS / LINE
+              </span>
             </div>
-            <div className="absolute right-1 top-1/2 -translate-y-1/2 z-20 flex items-center">
-              <div className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/80 text-[8px] font-mono font-bold text-amber-300">
-                LINE
-              </div>
-            </div>
+          )}
 
-            {/* Payline Highlight Overlay Frame across middle row */}
-            <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 h-13 sm:h-15 rounded-lg border-2 border-amber-400/80 bg-amber-500/5 pointer-events-none z-10 shadow-[0_0_12px_rgba(245,158,11,0.25)]" />
+          {/* Reel Machine Frame */}
+          <div
+            className={`relative w-full ${
+              numReels === 5 ? 'max-w-[340px] sm:max-w-[420px]' : 'max-w-[320px] sm:max-w-[360px]'
+            } rounded-xl bg-gradient-to-b from-[#090d13] via-[#0e1520] to-[#070b10] border-2 border-slate-800 ${
+              numReels === 5 ? 'p-1.5 sm:p-2' : 'p-2 sm:p-2.5'
+            } shadow-inner`}
+          >
+            {/* Payline Indicator Markers & Overlay Frame for Single-line machines (Lucky Slots) */}
+            {!isMultiLine && (
+              <>
+                <div className="absolute left-1 top-1/2 -translate-y-1/2 z-20 flex items-center">
+                  <div className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/80 text-[8px] font-mono font-bold text-amber-300">
+                    LINE
+                  </div>
+                </div>
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 z-20 flex items-center">
+                  <div className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/80 text-[8px] font-mono font-bold text-amber-300">
+                    LINE
+                  </div>
+                </div>
+                <div className="absolute left-8 right-8 top-1/2 -translate-y-1/2 h-13 sm:h-15 rounded-lg border-2 border-amber-400/80 bg-amber-500/5 pointer-events-none z-10 shadow-[0_0_12px_rgba(245,158,11,0.25)]" />
+              </>
+            )}
 
             {/* Reels Display (grid dynamically adapts to reel count) */}
             <div
-              className="grid gap-2 px-6"
+              className={`grid ${numReels === 5 ? 'gap-1 sm:gap-1.5 px-0.5 sm:px-1' : 'gap-2 px-6'}`}
               style={{
                 gridTemplateColumns: `repeat(${numReels}, minmax(0, 1fr))`,
               }}
             >
               {Array.from({ length: numReels }, (_, reelIdx) => {
                 const spinning = reelSpinning[reelIdx];
+
                 return (
                   <div
                     key={reelIdx}
-                    className="relative flex flex-col items-center justify-around bg-[#070a0f] rounded-lg border border-slate-800/80 overflow-hidden py-1 h-[142px] sm:h-[160px]"
+                    className={`relative flex flex-col items-center justify-around bg-[#070a0f] rounded-lg border border-slate-800/80 overflow-hidden py-1 ${
+                      numReels === 5 ? 'h-[126px] sm:h-[150px]' : 'h-[142px] sm:h-[160px]'
+                    }`}
                   >
-                    {/* Top Row (Above Payline) */}
-                    <div className="h-10 sm:h-12 flex items-center justify-center opacity-30 scale-85 transition-opacity">
-                      <SlotSymbolIcon symbol={currentWindow[0]?.[reelIdx] || 'blank'} />
-                    </div>
+                    {[0, 1, 2].map((rowIdx) => {
+                      const symbol = currentWindow[rowIdx]?.[reelIdx] || 'blank';
 
-                    {/* Middle Row (CENTER PAYLINE) */}
-                    <div
-                      className={`h-12 sm:h-14 w-full flex items-center justify-center z-15 transition-transform ${
-                        spinning ? 'blur-[0.5px]' : ''
-                      } ${winningLine?.won && !isSpinning ? 'scale-108' : ''}`}
-                    >
-                      <SlotSymbolIcon
-                        symbol={currentWindow[1]?.[reelIdx] || 'blank'}
-                        isWinning={winningLine?.won && !isSpinning}
-                      />
-                    </div>
+                      // Determine cell winning state
+                      let isCurrentActiveCell = false;
+                      let isAnyWinningCell = false;
 
-                    {/* Bottom Row (Below Payline) */}
-                    <div className="h-10 sm:h-12 flex items-center justify-center opacity-30 scale-85 transition-opacity">
-                      <SlotSymbolIcon symbol={currentWindow[2]?.[reelIdx] || 'blank'} />
-                    </div>
+                      if (!isMultiLine) {
+                        isCurrentActiveCell = rowIdx === 1 && Boolean(singleWinningLine?.won) && !isSpinning;
+                        isAnyWinningCell = isCurrentActiveCell;
+                      } else if (lastResult?.won && !isSpinning) {
+                        if (currentActiveWinLine) {
+                          const activeLineIdx = (currentActiveWinLine as any).paylineIndex ?? (currentActiveWinLine as any).lineIndex ?? 0;
+                          const plRows = config.paylines[activeLineIdx]?.rows;
+                          if (plRows && plRows[reelIdx] === rowIdx && (currentActiveWinLine.won || currentActiveWinLine.multiplier > 0)) {
+                            isCurrentActiveCell = true;
+                          }
+                        }
+                        isAnyWinningCell = winningLines.some((l) => {
+                          const lIdx = (l as any).paylineIndex ?? (l as any).lineIndex ?? 0;
+                          const plRows = config.paylines[lIdx]?.rows;
+                          return plRows && plRows[reelIdx] === rowIdx && (l.won || l.multiplier > 0);
+                        });
+                      }
+
+                      // Visual row height & styling
+                      const isCenterRow = rowIdx === 1;
+                      const rowHeightClass = numReels === 5
+                        ? isCenterRow ? 'h-10 sm:h-12' : 'h-9 sm:h-10'
+                        : isCenterRow ? 'h-12 sm:h-14' : 'h-10 sm:h-12';
+
+                      const opacityClass = !isMultiLine
+                        ? isCenterRow ? '' : 'opacity-30 scale-85'
+                        : isAnyWinningCell
+                        ? 'opacity-100'
+                        : winningLines.length > 0 && !isSpinning
+                        ? 'opacity-50'
+                        : 'opacity-90';
+
+                      return (
+                        <div
+                          key={rowIdx}
+                          className={`${rowHeightClass} w-full flex items-center justify-center transition-all ${opacityClass} ${
+                            spinning ? 'blur-[0.5px]' : ''
+                          } ${
+                            isCurrentActiveCell
+                              ? 'rounded-md bg-amber-400/15 border border-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)] z-15 scale-105'
+                              : isAnyWinningCell
+                              ? 'rounded-md bg-emerald-500/10 border border-emerald-500/40 z-10'
+                              : ''
+                          }`}
+                        >
+                          <SlotSymbolIcon
+                            symbol={symbol}
+                            isWinning={isCurrentActiveCell}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
@@ -339,9 +447,17 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
                 <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate animate-in fade-in duration-150">
                   <Sparkles size={13} className="text-amber-300 shrink-0" />
                   <span className="truncate">
-                    {lastResult.net > 0
-                      ? `Won +${lastResult.net.toLocaleString()} Credits · ${winningLine?.matchDescription}`
-                      : `Push · ${winningLine?.matchDescription}`}
+                    {isMultiLine ? (
+                      winningLines.length > 1 ? (
+                        `Won +${lastResult.net.toLocaleString()} Credits · ${winningLines.length} lines`
+                      ) : (
+                        `Won +${lastResult.net.toLocaleString()} Credits · Line ${(winningLines[0]?.paylineIndex ?? (winningLines[0] as any)?.lineIndex ?? 0) + 1}: ${winningLines[0]?.matchDescription}`
+                      )
+                    ) : lastResult.net > 0 ? (
+                      `Won +${lastResult.net.toLocaleString()} Credits · ${singleWinningLine?.matchDescription}`
+                    ) : (
+                      `Push · ${singleWinningLine?.matchDescription}`
+                    )}
                   </span>
                 </div>
               ) : (
@@ -359,7 +475,9 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
               </span>
             ) : (
               <span className="text-slate-500 font-sans text-[11px]">
-                Match symbols on the center payline
+                {isMultiLine
+                  ? `${config.paylines.length} fixed paylines · 3+ matching symbols left to right`
+                  : 'Match symbols on the center payline'}
               </span>
             )}
           </div>
@@ -398,12 +516,14 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           </button>
 
           {/* Current Wager Display */}
-          <div className="min-w-[80px] text-center px-2 py-1.5 rounded-lg bg-[#090d13] border border-slate-800 shrink-0">
+          <div className="min-w-[84px] text-center px-2 py-1.5 rounded-lg bg-[#090d13] border border-slate-800 shrink-0">
             <span className="text-sm font-bold font-mono text-amber-300 tabular-nums">
               {wager.toLocaleString()}
             </span>
-            <span className="block text-[9px] text-slate-400 font-sans uppercase -mt-0.5">
-              Credits
+            <span className="block text-[9px] text-slate-400 font-sans uppercase -mt-0.5 truncate">
+              {isMultiLine
+                ? `${config.paylines.length} lines · ${Math.floor(wager / config.paylines.length)}/line`
+                : 'Credits'}
             </span>
           </div>
 
@@ -422,7 +542,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           <div className="h-7 w-px bg-slate-800 shrink-0 mx-0.5" />
 
           {/* Quick Presets */}
-          {CHIP_PRESETS.map((preset) => {
+          {chipPresets.map((preset) => {
             const isOverLimit = preset > maxBet || preset > balance;
             const isSelected = wager === preset;
             return (
@@ -454,12 +574,12 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
         </div>
       </div>
 
-      {/* ── Collapsed Dynamic Paytable & Odds Section ── */}
+      {/* ── Collapsed Dynamic Paytable & Lines Section ── */}
       <details className="group rounded-xl bg-[#090d13] border border-slate-800/80 p-3 text-xs text-slate-400">
         <summary className="flex items-center justify-between cursor-pointer list-none select-none text-slate-300 font-medium">
           <div className="flex items-center gap-1.5">
             <TrendingUp size={13} className="text-emerald-400" />
-            <span className="text-xs">Paytable & odds</span>
+            <span className="text-xs">{isMultiLine ? 'Paytable & 10 lines' : 'Paytable & odds'}</span>
           </div>
           <div className="flex items-center gap-1.5 text-slate-500">
             <span className="text-[10px] font-mono group-open:hidden">Tap to inspect</span>
@@ -467,7 +587,21 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           </div>
         </summary>
 
-        <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-2 text-[11px]">
+        <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-3 text-[11px]">
+          {/* Special Wild Callout for Nova Voyager */}
+          {config.ruleSet === 'left-to-right-wild' && (
+            <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-2.5">
+              <SlotSymbolIcon symbol="comet" className="shrink-0" />
+              <div className="text-[11px]">
+                <div className="font-semibold text-indigo-300">Comet is WILD</div>
+                <div className="text-[10px] text-slate-400">
+                  Appears on reels 2, 3, and 4 only. Substitutes for any symbol to form the longest paying run on each line.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Paytable Items List */}
           <div className="grid grid-cols-1 gap-1.5">
             {config.paytable.map((item) => {
               const hits = matchOdds?.hitsByMatch[item.id];
@@ -483,9 +617,14 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
                   key={item.id}
                   className="flex items-center justify-between p-2 rounded-lg bg-slate-900/60 border border-slate-800/60"
                 >
-                  <div>
-                    <span className="font-semibold text-slate-200 block">{item.name}</span>
-                    <span className="text-[10px] text-slate-500">{item.description}</span>
+                  <div className="flex items-center gap-2">
+                    {item.symbol ? (
+                      <SlotSymbolIcon symbol={item.symbol} className="shrink-0 scale-75" />
+                    ) : null}
+                    <div>
+                      <span className="font-semibold text-slate-200 block">{item.name}</span>
+                      <span className="text-[10px] text-slate-500">{item.description}</span>
+                    </div>
                   </div>
                   <div className="text-right">
                     <span className="font-mono font-bold text-amber-300 text-xs block">
@@ -502,8 +641,47 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
             })}
           </div>
 
+          {/* Fixed Paylines Visual Diagrams (for multi-line machines) */}
+          {isMultiLine && (
+            <div className="pt-2 border-t border-slate-800/60">
+              <span className="text-[10px] font-mono font-semibold text-slate-300 block mb-2">
+                10 Fixed Payline Patterns (Left to Right):
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {config.paylines.map((p, lineIdx) => (
+                  <div
+                    key={lineIdx}
+                    className="flex flex-col items-center p-1.5 rounded-lg bg-slate-900/60 border border-slate-800/60"
+                  >
+                    <span className="text-[9px] font-mono font-semibold text-slate-400 mb-1">
+                      Line {lineIdx + 1}
+                    </span>
+                    <div className="grid grid-cols-5 gap-0.5 w-16 h-8 bg-slate-950 p-0.5 rounded border border-slate-800">
+                      {[0, 1, 2].map((r) =>
+                        p.rows.map((row, c) => (
+                          <div
+                            key={`${r}-${c}`}
+                            className={`rounded-[1px] ${
+                              row === r
+                                ? 'bg-amber-400 shadow-[0_0_2px_rgba(251,191,36,0.8)]'
+                                : 'bg-slate-800/40'
+                            }`}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
-            <span>Payline: Center row only (per line odds)</span>
+            <span>
+              {isMultiLine
+                ? '10 Paylines (left-to-right from reel 1) · Odds are per line'
+                : 'Payline: Center row only (per line odds)'}
+            </span>
             <span>Target RTP: {rtpPercent}%</span>
           </div>
         </div>
@@ -511,3 +689,4 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     </div>
   );
 };
+

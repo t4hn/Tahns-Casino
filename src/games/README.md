@@ -166,6 +166,10 @@ registerSlotMachine(
 2. Adds the machine to the casino floor catalog with level requirements and table limits.
 3. Binds the generic `SlotMachine` component wrapped with the machine's configuration.
 
+### Built-in Rule Sets:
+1. `'classic-cherry-3reel'`: Used by Lucky Slots. 3-of-a-kind, 2-cherries anywhere, and 1-cherry on reel 1. Single center payline.
+2. `'left-to-right-wild'`: Used by Nova Voyager. 5 reels x 3 rows with 10 fixed paylines. Symbols evaluate left-to-right starting from reel 1. Comet is WILD on reels 2, 3, and 4, substituting for any symbol to form runs of 3, 4, or 5. Only the longest run per payline is paid. Total payout is the sum of (line multiplier * bet per line) across all 10 active paylines.
+
 ### Custom Rule Sets
 To register a new payout evaluation rule set, add a definition to `src/games/slots/ruleSets.ts`:
 

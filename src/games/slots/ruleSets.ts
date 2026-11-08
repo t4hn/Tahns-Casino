@@ -186,6 +186,139 @@ registerRuleSet({
   calculateMatchOdds: classicCherry3ReelMatchOdds,
 });
 
+/**
+ * Line evaluator for left-to-right matching with wild substitution ('left-to-right-wild').
+ * - Takes symbol on reel 1 (index 0) as base symbol.
+ * - Counts consecutive symbols from the left matching the base symbol or wild ('comet').
+ * - Run lengths of 3, 4, or 5 pay according to config paytable.
+ * - Only the longest run per line counts.
+ * - Wilds appear only on reels 2, 3, 4 so reel 1 is never wild.
+ */
+export const leftToRightWildEvaluator: LineEvaluator = (symbolsOnLine, config) => {
+  if (symbolsOnLine.length < 3) {
+    return { multiplier: 0, matchId: 'no_win', matchDescription: 'No Win', won: false };
+  }
+
+  const s0 = symbolsOnLine[0];
+  // Reel 1 cannot be a wild or blank
+  if (s0 === 'blank' || s0 === 'comet') {
+    return { multiplier: 0, matchId: 'no_win', matchDescription: 'No Win', won: false };
+  }
+
+  let runLength = 1;
+  for (let i = 1; i < symbolsOnLine.length; i++) {
+    const sym = symbolsOnLine[i];
+    if (sym === s0 || sym === 'comet') {
+      runLength++;
+    } else {
+      break;
+    }
+  }
+
+  if (runLength >= 3) {
+    const matchId = `${s0}_${runLength}`;
+    const payItem = config.paytable.find((p) => p.id === matchId);
+    if (payItem) {
+      return {
+        multiplier: payItem.multiplier,
+        matchId: payItem.id,
+        matchDescription: payItem.name,
+        won: payItem.multiplier > 0,
+      };
+    }
+  }
+
+  return { multiplier: 0, matchId: 'no_win', matchDescription: 'No Win', won: false };
+};
+
+/**
+ * Fast analytical match odds for 1 payline of the left-to-right-wild rule set.
+ * Exact outcome counts computed from per-reel symbol distributions across all 24^5 combinations.
+ */
+export const leftToRightWildMatchOdds: MatchOddsCalculator = (config) => {
+  const numReels = config.reelStrips.length;
+  if (numReels < 5) return { totalOutcomesPerLine: 0, hitsByMatch: {} };
+
+  const lengths = config.reelStrips.map((strip) => strip.length);
+  const totalOutcomesPerLine = lengths.reduce((acc, len) => acc * len, 1);
+
+  const countSym = (reelIdx: number, sym: SymbolId) =>
+    config.reelStrips[reelIdx].filter((s) => s === sym).length;
+
+  const hitsByMatch: Record<string, number> = {};
+  let payingHits = 0;
+
+  // Extract distinct base symbols defined in the paytable (ignoring the length suffix)
+  const baseSymbols = Array.from(
+    new Set(
+      config.paytable
+        .map((p) => p.id.split('_')[0] as SymbolId)
+        .filter((sym) => sym !== 'comet' && sym !== 'blank')
+    )
+  );
+
+  for (const sym of baseSymbols) {
+    const c0 = countSym(0, sym);
+    if (c0 === 0) continue;
+
+    // Reels 1, 2, 3 have sym + comet
+    const m1 = countSym(1, sym) + countSym(1, 'comet');
+    const m2 = countSym(2, sym) + countSym(2, 'comet');
+    const m3 = countSym(3, sym) + countSym(3, 'comet');
+    const nm3 = lengths[3] - m3;
+
+    // Reel 4 has no comets
+    const m4 = countSym(4, sym);
+    const nm4 = lengths[4] - m4;
+
+    // 5-of-a-kind: reels 0, 1, 2, 3, 4 all match
+    const hits5 = c0 * m1 * m2 * m3 * m4;
+    // 4-of-a-kind: reels 0, 1, 2, 3 match, reel 4 does not match
+    const hits4 = c0 * m1 * m2 * m3 * nm4;
+    // 3-of-a-kind: reels 0, 1, 2 match, reel 3 does not match, reel 4 can be anything
+    const hits3 = c0 * m1 * m2 * nm3 * lengths[4];
+
+    hitsByMatch[`${sym}_5`] = hits5;
+    hitsByMatch[`${sym}_4`] = hits4;
+    hitsByMatch[`${sym}_3`] = hits3;
+
+    payingHits += hits5 + hits4 + hits3;
+  }
+
+  hitsByMatch['no_win'] = totalOutcomesPerLine - payingHits;
+
+  return {
+    totalOutcomesPerLine,
+    hitsByMatch,
+  };
+};
+
+/**
+ * Fast exact analytical RTP calculation for left-to-right-wild rule set.
+ * Returns exact return across all combinations without permutation loops.
+ */
+export const leftToRightWildAnalyticalRtp: AnalyticalRtpCalculator = (config) => {
+  const odds = leftToRightWildMatchOdds(config);
+  if (odds.totalOutcomesPerLine === 0) return 0;
+
+  let totalReturn = 0;
+  for (const item of config.paytable) {
+    const hits = odds.hitsByMatch[item.id] || 0;
+    totalReturn += hits * item.multiplier;
+  }
+
+  return totalReturn / odds.totalOutcomesPerLine;
+};
+
+// Register left-to-right-wild rule set
+registerRuleSet({
+  id: 'left-to-right-wild',
+  name: 'Left-to-Right Wild',
+  evaluateLine: leftToRightWildEvaluator,
+  calculateAnalyticalRtp: leftToRightWildAnalyticalRtp,
+  calculateMatchOdds: leftToRightWildMatchOdds,
+});
+
 export function registerRuleSet(def: RuleSetDefinition): void {
   ruleSets.set(def.id, def);
 }

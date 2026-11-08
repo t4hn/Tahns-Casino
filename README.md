@@ -76,13 +76,17 @@ npm run build
 │   │   │   ├── rng.ts               # Re-exports rollDie from shared RNG
 │   │   │   └── DiceGame.tsx         # Interactive dice table UI (implements GameProps)
 │   │   ├── slots/                   # Configurable Slot Machine Engine
-│   │   │   ├── ruleSets.ts          # Registry of line evaluators & analytical RTP calculators
-│   │   │   ├── symbols/             # Vector artwork components for slot symbols
+│   │   │   ├── ruleSets.ts          # Registry of line evaluators ('classic-cherry-3reel', 'left-to-right-wild')
+│   │   │   ├── symbols/             # Vector artwork components for classic & cosmic slot symbols
 │   │   │   │   └── SlotSymbolIcon.tsx
-│   │   │   ├── slotsConfig.ts       # Reel strip compositions, paylines, and paytable data
+│   │   │   ├── slotsConfig.ts       # Generic strip compositions, paylines, and paytable types
+│   │   │   ├── luckySlotsConfig.ts  # Lucky Slots classic 3-reel 1-line configuration
+│   │   │   ├── novaVoyagerConfig.ts # Nova Voyager 5-reel 10-line high-volatility cosmic configuration
 │   │   │   ├── slotsRules.ts        # Generic N-reel rules engine, analytical & combinatorial RTP
-│   │   │   ├── slotsRules.test.ts   # 19 unit/integration tests (safety caps, analytical odds, multi-line, lean path)
-│   │   │   ├── SlotMachine.tsx      # Generic configurable slot machine component
+│   │   │   ├── slotsRules.test.ts   # 19 unit/integration tests for Lucky Slots and safety caps
+│   │   │   ├── SlotMachine.test.tsx # 3 component lifecycle tests (fake timers, ref updates, unmount escrow)
+│   │   │   ├── novaVoyager.test.tsx # 19 unit, analytical, full 7.96M enumeration & component lifecycle tests
+│   │   │   ├── SlotMachine.tsx      # Configurable slot machine component (single-line & multi-line)
 │   │   │   └── SlotsGame.tsx        # Lucky Slots wrapper passing DEFAULT_SLOTS_CONFIG
 │   │   ├── registry.ts              # Game module registry, registerSlotMachine helper, table derivation
 │   │   ├── types.ts                 # CasinoGameMetadata, GameFloorItem
