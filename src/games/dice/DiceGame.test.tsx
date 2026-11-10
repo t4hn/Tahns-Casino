@@ -113,4 +113,19 @@ describe('DiceGame Component', () => {
 
     expect(props.settle).toHaveBeenCalledTimes(1);
   });
+
+  it('disables Roll button and shows low-balance message when balance < minBet', () => {
+    const props = createProps({ balance: 5, minBet: 10 });
+    render(<DiceGame {...props} />);
+
+    const rollButton = screen.getByRole('button', {
+      name: /you need at least 10 credits to play/i,
+    }) as HTMLButtonElement;
+    expect(rollButton).toBeDefined();
+    expect(rollButton.disabled).toBe(true);
+
+    const messages = screen.getAllByText(/you need at least 10 credits to play/i);
+    expect(messages.length).toBeGreaterThanOrEqual(2);
+  });
 });
+

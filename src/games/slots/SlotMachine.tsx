@@ -28,6 +28,61 @@ export interface SlotMachineProps extends GameProps {
   config: SlotsConfig;
 }
 
+export interface SlotResultMessage {
+  text: string;
+  tone: 'win' | 'neutral' | 'loss';
+}
+
+export function getSlotResultMessage(
+  evaluation: SpinEvaluation,
+  isMultiLine: boolean
+): SlotResultMessage {
+  const { payout, bet, net, lines } = evaluation;
+  const winningLines = lines.filter((l) => l.won || (l.multiplier && l.multiplier > 0));
+  const singleWinningLine = lines[0];
+
+  const lineInfo = isMultiLine
+    ? winningLines.length > 1
+      ? ` · ${winningLines.length} lines`
+      : winningLines.length === 1
+      ? ` · Line ${(winningLines[0]?.paylineIndex ?? (winningLines[0] as any)?.lineIndex ?? 0) + 1}: ${winningLines[0]?.matchDescription}`
+      : ''
+    : singleWinningLine?.matchDescription
+    ? ` · ${singleWinningLine.matchDescription}`
+    : '';
+
+  // 1. payout > bet: "Won +<net> Credits" plus the line info (unchanged)
+  if (payout > bet) {
+    return {
+      text: `Won +${net.toLocaleString()} Credits${lineInfo}`,
+      tone: 'win',
+    };
+  }
+
+  // 2. payout == bet: "Push - bet returned"
+  if (payout === bet) {
+    return {
+      text: 'Push - bet returned',
+      tone: 'neutral',
+    };
+  }
+
+  // 3. 0 < payout < bet: "Returned <payout> Credits (-<loss>)" plus the line info, styled neutral, never as a win and never "+-"
+  if (payout > 0 && payout < bet) {
+    const loss = bet - payout;
+    return {
+      text: `Returned ${payout.toLocaleString()} Credits (-${loss.toLocaleString()})${lineInfo}`,
+      tone: 'neutral',
+    };
+  }
+
+  // 4. payout == 0: "No win · Lost <bet> Credits" (unchanged)
+  return {
+    text: `No win · Lost ${bet.toLocaleString()} Credits`,
+    tone: 'loss',
+  };
+}
+
 export const SlotMachine: React.FC<SlotMachineProps> = ({
   balance,
   minBet,
@@ -443,31 +498,36 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           {/* Compact One-Line Result Strip */}
           <div className="h-6 my-2 w-full flex items-center justify-center text-xs font-mono overflow-hidden px-2 text-center">
             {lastResult ? (
-              lastResult.won ? (
-                <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate animate-in fade-in duration-150">
-                  <Sparkles size={13} className="text-amber-300 shrink-0" />
-                  <span className="truncate">
-                    {isMultiLine ? (
-                      winningLines.length > 1 ? (
-                        `Won +${lastResult.net.toLocaleString()} Credits · ${winningLines.length} lines`
-                      ) : (
-                        `Won +${lastResult.net.toLocaleString()} Credits · Line ${(winningLines[0]?.paylineIndex ?? (winningLines[0] as any)?.lineIndex ?? 0) + 1}: ${winningLines[0]?.matchDescription}`
-                      )
-                    ) : lastResult.net > 0 ? (
-                      `Won +${lastResult.net.toLocaleString()} Credits · ${singleWinningLine?.matchDescription}`
-                    ) : (
-                      `Push · ${singleWinningLine?.matchDescription}`
-                    )}
-                  </span>
-                </div>
-              ) : (
-                <div className="text-slate-400 font-medium truncate animate-in fade-in duration-150">
-                  No win · Lost {lastResult.bet.toLocaleString()} Credits
-                </div>
-              )
+              (() => {
+                const resultMsg = getSlotResultMessage(lastResult, isMultiLine);
+                if (resultMsg.tone === 'win') {
+                  return (
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold truncate animate-in fade-in duration-150">
+                      <Sparkles size={13} className="text-amber-300 shrink-0" />
+                      <span className="truncate">{resultMsg.text}</span>
+                    </div>
+                  );
+                }
+                if (resultMsg.tone === 'neutral') {
+                  return (
+                    <div className="text-slate-300 font-medium truncate animate-in fade-in duration-150">
+                      {resultMsg.text}
+                    </div>
+                  );
+                }
+                return (
+                  <div className="text-slate-400 font-medium truncate animate-in fade-in duration-150">
+                    {resultMsg.text}
+                  </div>
+                );
+              })()
             ) : isSpinning ? (
               <span className="text-amber-400 font-mono text-[11px] animate-pulse">
                 Reels spinning...
+              </span>
+            ) : balance < minBet ? (
+              <span className="text-amber-400 font-sans text-[11px] font-medium">
+                You need at least {minBet} credits to play
               </span>
             ) : errorMsg ? (
               <span className="text-rose-400 font-sans text-[11px] font-medium truncate">
@@ -495,7 +555,11 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           >
             <CircleDot size={18} className={isSpinning ? 'animate-spin shrink-0' : 'shrink-0'} />
             <span className="truncate">
-              {isSpinning ? 'Spinning Reels...' : `Spin · ${wager.toLocaleString()} Credits`}
+              {balance < minBet
+                ? `You need at least ${minBet} credits to play`
+                : isSpinning
+                ? 'Spinning Reels...'
+                : `Spin · ${wager.toLocaleString()} Credits`}
             </span>
           </button>
         </div>
@@ -606,11 +670,19 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
             {config.paytable.map((item) => {
               const hits = matchOdds?.hitsByMatch[item.id];
               const totalOutcomes = matchOdds?.totalOutcomesPerLine || 0;
-              const hasOdds = typeof hits === 'number' && totalOutcomes > 0;
-              const oneInN = hasOdds && hits > 0 ? Math.round(totalOutcomes / hits) : 0;
-              const oddsPercent = hasOdds && hits > 0
-                ? ((hits / totalOutcomes) * 100).toFixed(hits < 10 ? 2 : 1)
-                : '0.0';
+              const hasOdds = typeof hits === 'number' && totalOutcomes > 0 && hits > 0;
+              const oneInN = hasOdds ? Math.round(totalOutcomes / hits) : 0;
+              const probPct = hasOdds ? (hits / totalOutcomes) * 100 : 0;
+
+              let oddsText = '';
+              if (hasOdds) {
+                if (probPct < 0.01) {
+                  oddsText = `1 in ${oneInN.toLocaleString()} per line`;
+                } else {
+                  const decimals = probPct < 0.1 ? 2 : probPct < 1 ? 2 : 1;
+                  oddsText = `1 in ${oneInN.toLocaleString()} per line (${probPct.toFixed(decimals)}%)`;
+                }
+              }
 
               return (
                 <div
@@ -632,7 +704,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
                     </span>
                     {hasOdds && (
                       <span className="font-mono text-[10px] text-slate-500">
-                        {hits}/{totalOutcomes.toLocaleString()} (1 in {oneInN.toLocaleString()} · {oddsPercent}%)
+                        {oddsText}
                       </span>
                     )}
                   </div>

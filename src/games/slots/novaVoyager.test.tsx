@@ -12,7 +12,7 @@ import {
   calculateHitStats,
 } from './slotsRules';
 import { gameRegistry, getGameModule } from '../registry';
-import { SlotMachine } from './SlotMachine';
+import { SlotMachine, getSlotResultMessage } from './SlotMachine';
 import { RoundResult } from '../../types/casino';
 
 describe('Nova Voyager Slot Machine', () => {
@@ -211,7 +211,9 @@ describe('Nova Voyager Slot Machine', () => {
       expect(game?.name).toBe('Nova Voyager');
       expect(game?.category).toBe('Slots');
       expect(game?.volatility).toBe('High');
-      expect(game?.minLevel).toBe(2);
+      expect((game as any)?.minLevel).toBeUndefined();
+      const floorGame = gameRegistry.deriveFloorGames().find((g) => g.id === 'nova-voyager');
+      expect(floorGame?.status).toBe('Table Open');
       expect(game?.minBet).toBe(10);
       expect(game?.maxBet).toBe(200);
 
@@ -355,6 +357,147 @@ describe('Nova Voyager Slot Machine', () => {
       });
 
       expect(props.resolveRound).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables Spin button and displays low balance notice when balance < minBet', () => {
+      const props = createProps({ balance: 5, minBet: 10 });
+      render(<SlotMachine {...props} />);
+
+      const spinButton = screen.getByRole('button', {
+        name: /you need at least 10 credits to play/i,
+      }) as HTMLButtonElement;
+      expect(spinButton).toBeDefined();
+      expect(spinButton.disabled).toBe(true);
+
+      const notices = screen.getAllByText(/you need at least 10 credits to play/i);
+      expect(notices.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('Result Strip Wording (getSlotResultMessage & Multi-line Sub-bet Returns)', () => {
+    it('handles payout > bet: "Won +<net> Credits" with line info, tone win', () => {
+      // Multi-line win with multiple winning lines
+      const multiWin = getSlotResultMessage(
+        {
+          bet: 50,
+          payout: 150,
+          net: 100,
+          won: true,
+          lines: [
+            { won: true, multiplier: 15, matchDescription: 'Three Planets', paylineIndex: 0 } as any,
+            { won: true, multiplier: 15, matchDescription: 'Three Planets', paylineIndex: 1 } as any,
+          ],
+        } as any,
+        true
+      );
+      expect(multiWin.tone).toBe('win');
+      expect(multiWin.text).toBe('Won +100 Credits · 2 lines');
+      expect(multiWin.text).not.toContain('+-');
+
+      // Single line win on multi-line machine
+      const singleLineWin = getSlotResultMessage(
+        {
+          bet: 50,
+          payout: 125,
+          net: 75,
+          won: true,
+          lines: [
+            { won: true, multiplier: 25, matchDescription: 'Three Rockets', paylineIndex: 2 } as any,
+          ],
+        } as any,
+        true
+      );
+      expect(singleLineWin.tone).toBe('win');
+      expect(singleLineWin.text).toBe('Won +75 Credits · Line 3: Three Rockets');
+
+      // Single line classic machine (Lucky Slots)
+      const classicWin = getSlotResultMessage(
+        {
+          bet: 50,
+          payout: 200,
+          net: 150,
+          won: true,
+          lines: [
+            { won: true, multiplier: 4, matchDescription: 'Three Cherries (C-C-C)' } as any,
+          ],
+        } as any,
+        false
+      );
+      expect(classicWin.tone).toBe('win');
+      expect(classicWin.text).toBe('Won +150 Credits · Three Cherries (C-C-C)');
+    });
+
+    it('handles payout == bet: "Push - bet returned", tone neutral', () => {
+      const pushResult = getSlotResultMessage(
+        {
+          bet: 50,
+          payout: 50,
+          net: 0,
+          won: true,
+          lines: [
+            { won: true, multiplier: 1, matchDescription: 'Cherry on Reel 1 (C-?-?)' } as any,
+          ],
+        } as any,
+        false
+      );
+      expect(pushResult.tone).toBe('neutral');
+      expect(pushResult.text).toBe('Push - bet returned');
+      expect(pushResult.text).not.toContain('+-');
+    });
+
+    it('handles 0 < payout < bet: "Returned <payout> Credits (-<loss>)" with line info, tone neutral, never "+-"', () => {
+      // Multi-line machine where 1 line hit returns less than the 10-line total bet
+      const subBetReturn = getSlotResultMessage(
+        {
+          bet: 50,
+          payout: 20,
+          net: -30,
+          won: true,
+          lines: [
+            { won: true, multiplier: 4, matchDescription: 'Three Stars', paylineIndex: 0 } as any,
+          ],
+        } as any,
+        true
+      );
+      expect(subBetReturn.tone).toBe('neutral');
+      expect(subBetReturn.text).toBe('Returned 20 Credits (-30) · Line 1: Three Stars');
+      expect(subBetReturn.text).not.toContain('+-');
+      expect(subBetReturn.text).not.toContain('Won');
+
+      // Multi-line machine with 2 small winning lines that together return less than the total bet
+      const subBetMultiLines = getSlotResultMessage(
+        {
+          bet: 100,
+          payout: 40,
+          net: -60,
+          won: true,
+          lines: [
+            { won: true, multiplier: 2, matchDescription: 'Three Meteors', paylineIndex: 0 } as any,
+            { won: true, multiplier: 2, matchDescription: 'Three Meteors', paylineIndex: 4 } as any,
+          ],
+        } as any,
+        true
+      );
+      expect(subBetMultiLines.tone).toBe('neutral');
+      expect(subBetMultiLines.text).toBe('Returned 40 Credits (-60) · 2 lines');
+      expect(subBetMultiLines.text).not.toContain('+-');
+      expect(subBetMultiLines.text).not.toContain('Won');
+    });
+
+    it('handles payout == 0: "No win · Lost <bet> Credits", tone loss', () => {
+      const lossResult = getSlotResultMessage(
+        {
+          bet: 50,
+          payout: 0,
+          net: -50,
+          won: false,
+          lines: [],
+        } as any,
+        true
+      );
+      expect(lossResult.tone).toBe('loss');
+      expect(lossResult.text).toBe('No win · Lost 50 Credits');
+      expect(lossResult.text).not.toContain('+-');
     });
   });
 });

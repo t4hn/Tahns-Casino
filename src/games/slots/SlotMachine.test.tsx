@@ -152,4 +152,19 @@ describe('SlotMachine Component', () => {
 
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
   });
+
+  it('disables Spin button and shows low-balance message when balance < minBet', () => {
+    const props = createProps({ balance: 5, minBet: 10 });
+    render(<SlotMachine {...props} />);
+
+    const spinButton = screen.getByRole('button', {
+      name: /you need at least 10 credits to play/i,
+    }) as HTMLButtonElement;
+    expect(spinButton).toBeDefined();
+    expect(spinButton.disabled).toBe(true);
+
+    const messages = screen.getAllByText(/you need at least 10 credits to play/i);
+    expect(messages.length).toBeGreaterThanOrEqual(2);
+  });
 });
+

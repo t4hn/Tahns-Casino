@@ -152,7 +152,6 @@ registerSlotMachine(
     name: 'Crown Jewels 3-Reel',
     description: 'Luxury high-roller slots with sparkling sapphire wilds.',
     imageUrl: '/images/game_lucky_slots_1793671235711.jpg',
-    minLevel: 2,
     minBet: 20,
     maxBet: 1000,
     volatility: 'Medium',
@@ -163,7 +162,7 @@ registerSlotMachine(
 
 `registerSlotMachine` automatically:
 1. Calculates the theoretical payout rate (`payoutRate`) from the config using `calculateRtp(config)` or `calculateAnalyticalRtp(config)`.
-2. Adds the machine to the casino floor catalog with level requirements and table limits.
+2. Adds the machine to the casino floor catalog with table limits and status.
 3. Binds the generic `SlotMachine` component wrapped with the machine's configuration.
 
 ### Built-in Rule Sets:
