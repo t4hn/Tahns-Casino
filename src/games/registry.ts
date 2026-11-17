@@ -10,6 +10,7 @@ import { SlotsGame } from './slots/SlotsGame';
 import { SlotMachine } from './slots/SlotMachine';
 import { BlackjackGame } from './blackjack/BlackjackGame';
 import { VideoPokerGame } from './video-poker/VideoPokerGame';
+import { RouletteGame } from './roulette/RouletteGame';
 
 const DICE_RTP_RANGE = `${(calculateRtp('low') * 100).toFixed(1)}% - ${(calculateRtp('seven') * 100).toFixed(1)}%`;
 const SLOTS_RTP = `${(calculateSlotsRtp(DEFAULT_SLOTS_CONFIG) * 100).toFixed(1)}%`;
@@ -197,6 +198,11 @@ registerGameModule({
 registerGameModule({
   id: 'video-poker',
   component: VideoPokerGame,
+});
+
+registerGameModule({
+  id: 'roulette',
+  component: RouletteGame,
 });
 
 registerSlotMachine(
