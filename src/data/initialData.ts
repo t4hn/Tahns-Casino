@@ -12,6 +12,8 @@ export const AVATAR_OPTIONS = [
   { id: 'avatar_2', label: 'Emerald VIP', url: '/images/casino_featured_game_1793671235087.jpg' },
   { id: 'avatar_3', label: 'Card Master', url: '/images/game_blackjack_1793671236023.jpg' },
   { id: 'avatar_4', label: 'Dice Baron', url: '/images/game_dice_1793671261314.jpg' },
+  { id: 'avatar_5', label: 'Wheel Sovereign', url: '/images/game_roulette_1793671260984.jpg' },
+  { id: 'avatar_6', label: 'Nova Voyager', url: '/images/game_nova_voyager.jpg' },
 ];
 
 export const INITIAL_PROFILE: WalletProfile = {

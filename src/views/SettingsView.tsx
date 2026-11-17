@@ -47,18 +47,12 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300 max-w-3xl mx-auto">
-      {/* ── Settings Header ── */}
-      <div className="pt-2">
-        <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase mb-1">
+      {/* ── Contextual Breadcrumb ── */}
+      <div className="pt-1">
+        <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase">
           <Sliders size={14} />
           <span>Patron Preferences</span>
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold font-display text-slate-100">
-          Casino Settings
-        </h1>
-        <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Customize audio atmosphere, display layout, and manage patron credentials.
-        </p>
       </div>
 
       {testNotification && (

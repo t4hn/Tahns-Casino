@@ -58,22 +58,12 @@ export const HomeView: React.FC = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
-      {/* ── Home Hero / App Title ── */}
-      <section className="relative pt-2 pb-1">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase mb-1">
-              <span>Patron Lounge</span>
-              <span aria-hidden="true" className="text-slate-700">/</span>
-              <span>Floor Overview</span>
-            </div>
-            <h1 className="text-2xl sm:text-4xl font-bold font-display text-slate-100 tracking-tight">
-              Tahn&apos;s Casino
-            </h1>
-          </div>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-sm">
-            Experience high-stakes virtual table gaming, daily patron rewards, and level progression.
-          </p>
+      {/* ── Contextual Breadcrumb ── */}
+      <section className="relative pt-1">
+        <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase">
+          <span>Patron Lounge</span>
+          <span aria-hidden="true" className="text-slate-700">/</span>
+          <span>Floor Overview</span>
         </div>
       </section>
 

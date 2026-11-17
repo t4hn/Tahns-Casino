@@ -73,4 +73,4 @@ export interface CasinoSettings {
   animations: boolean;
 }
 
-export type NavTab = 'home' | 'games' | 'achievements' | 'settings';
+export type NavTab = 'home' | 'games' | 'profile' | 'achievements' | 'settings';

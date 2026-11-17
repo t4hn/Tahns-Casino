@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Shield, Sparkles, Check, ArrowRight, Coins, Trophy } from 'lucide-react';
 import { useCasino } from '../context/CasinoContext';
 import { AVATAR_OPTIONS, DEFAULT_CHARACTER_NAME, STARTING_CREDITS } from '../data/initialData';
+import { BrandMark } from '../components/BrandMark';
 import { soundManager } from '../utils/sound';
 
 export const CharacterCreationView: React.FC = () => {
@@ -24,8 +25,8 @@ export const CharacterCreationView: React.FC = () => {
       <div className="relative w-full max-w-lg rounded-2xl bg-[#0f141d] border border-slate-800 p-6 sm:p-8 shadow-2xl space-y-6">
         {/* Header / Brand Mark */}
         <div className="text-center space-y-2">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-800 text-slate-950 font-display font-bold text-2xl shadow-lg shadow-emerald-500/20 border border-emerald-400/40 mb-2">
-            T
+          <div className="flex justify-center mb-2">
+            <BrandMark size="lg" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-slate-100 tracking-tight">
             Welcome to Tahn&apos;s Casino
@@ -65,7 +66,7 @@ export const CharacterCreationView: React.FC = () => {
             <label className="block text-xs uppercase tracking-wider text-slate-400 font-medium">
               Choose Your Patron Avatar
             </label>
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
               {AVATAR_OPTIONS.map((avatar) => {
                 const isSelected = selectedAvatar === avatar.url;
                 return (

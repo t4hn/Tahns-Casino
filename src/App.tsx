@@ -5,6 +5,7 @@ import { HomeView } from './views/HomeView';
 import { GamesView } from './views/GamesView';
 import { AchievementsView } from './views/AchievementsView';
 import { SettingsView } from './views/SettingsView';
+import { ProfileView } from './views/ProfileView';
 import { CharacterCreationView } from './views/CharacterCreationView';
 import { GameDetailView } from './views/GameDetailView';
 import { DailyBonusModal } from './components/DailyBonusModal';
@@ -28,6 +29,8 @@ const AppContent: React.FC = () => {
         return <HomeView />;
       case 'games':
         return <GamesView />;
+      case 'profile':
+        return <ProfileView />;
       case 'achievements':
         return <AchievementsView />;
       case 'settings':

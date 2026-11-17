@@ -47,25 +47,17 @@ export const AchievementsView: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* ── Achievements Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pt-2">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-amber-400 font-mono tracking-wider uppercase mb-1">
-            <Trophy size={14} />
-            <span>Patron Honors</span>
-            <span aria-hidden="true" className="text-slate-700">·</span>
-            <span>{unlockedCount} of {achievements.length} Unlocked</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold font-display text-slate-100">
-            Patron Achievements
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Complete milestones to earn virtual patron credits and XP ranking boosts.
-          </p>
+      {/* ── Contextual Breadcrumb & Stats ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+        <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase">
+          <Trophy size={14} />
+          <span>Patron Honors</span>
+          <span aria-hidden="true" className="text-slate-700">/</span>
+          <span>{unlockedCount} of {achievements.length} Unlocked</span>
         </div>
 
         {/* Stats Summary */}
-        <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs shrink-0">
+        <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs shrink-0 self-start sm:self-auto">
           <div>
             <span className="text-[10px] text-slate-500 uppercase block font-mono">Claimed</span>
             <span className="text-emerald-400 font-bold font-mono">{claimedCount} / {achievements.length}</span>

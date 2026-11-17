@@ -69,7 +69,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ isOpen, onCl
             <label className="block text-xs uppercase tracking-wider text-slate-400 font-medium mb-2.5">
               Select Patron Avatar
             </label>
-            <div className="grid grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-3 gap-2.5">
               {AVATAR_OPTIONS.map((avatar) => {
                 const isSelected = selectedAvatar === avatar.url;
                 return (

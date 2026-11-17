@@ -46,6 +46,14 @@ export interface XpResult {
   promotionCredits?: number;
 }
 
+export interface LevelTier {
+  level: number;
+  minXp: number;
+  maxXp: number;
+  title: string;
+  promotionBonus: number;
+}
+
 const LEVEL_THRESHOLDS = [
   { level: 1, minXp: 0, maxXp: 500, title: 'Bronze Patron' },
   { level: 2, minXp: 500, maxXp: 1200, title: 'Silver Cardholder' },
@@ -54,6 +62,13 @@ const LEVEL_THRESHOLDS = [
   { level: 5, minXp: 3500, maxXp: 5200, title: 'Black Tier Elite' },
   { level: 6, minXp: 5200, maxXp: 7500, title: 'Casino Royalty' },
 ];
+
+export function getLevelRoadmap(): LevelTier[] {
+  return LEVEL_THRESHOLDS.map((tier) => ({
+    ...tier,
+    promotionBonus: tier.level > 1 ? 500 * tier.level : 0,
+  }));
+}
 
 /**
  * Pure derivation of level and title from total XP.

@@ -24,21 +24,13 @@ export const GamesView: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* ── Games Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pt-2">
-        <div>
-          <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase mb-1">
-            <Gamepad2 size={14} />
-            <span>Casino Floor</span>
-            <span aria-hidden="true" className="text-slate-700">·</span>
-            <span>{games.length} Floor Tables</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-bold font-display text-slate-100">
-            Casino Games
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Select a table to inspect limits, payouts, and seat your patron avatar.
-          </p>
+      {/* ── Contextual Breadcrumb ── */}
+      <div className="pt-1">
+        <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono tracking-wider uppercase">
+          <Gamepad2 size={14} />
+          <span>Casino Floor</span>
+          <span aria-hidden="true" className="text-slate-700">/</span>
+          <span>{games.length} Floor Tables</span>
         </div>
       </div>
 
