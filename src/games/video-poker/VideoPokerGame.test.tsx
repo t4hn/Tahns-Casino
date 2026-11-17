@@ -237,4 +237,47 @@ describe('VideoPokerGame Component', () => {
     expect(props.resolveRound).toHaveBeenCalledWith(20, 0);
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('uses HOLD indicators (no TAP labels), unified gold DEAL/DRAW actions, highlights winning paytable rows, and handles MAX wager', () => {
+    mockDeterministicDeck([
+      c('10', 'hearts'),
+      c('J', 'hearts'),
+      c('Q', 'hearts'),
+      c('K', 'hearts'),
+      c('A', 'hearts'),
+    ]);
+
+    const props = createProps({ balance: 600, minBet: 20, maxBet: 1000, animations: false });
+    render(<VideoPokerGame {...props} />);
+
+    // MAX selects highest affordable multiple of 10 (600)
+    fireEvent.click(screen.getByRole('button', { name: 'MAX' }));
+    const dealBtn = screen.getByRole('button', { name: /deal hand · 600 credits/i });
+    expect(dealBtn.className).toContain('from-amber-400');
+
+    fireEvent.click(dealBtn);
+
+    // Unheld and held cards display HOLD indicators, never generic TAP labels
+    expect(screen.queryByText('TAP')).toBeNull();
+    const card0 = screen.getByTestId('poker-card-0');
+    expect(within(card0).getByText('HOLD')).toBeTruthy();
+
+    fireEvent.click(card0);
+    expect(card0.getAttribute('aria-pressed')).toBe('true');
+    expect(card0.className).toContain('-translate-y-2');
+
+    // Hold remaining 4 cards and verify unified gold DRAW button
+    for (let i = 1; i < 5; i++) {
+      fireEvent.click(screen.getByTestId(`poker-card-${i}`));
+    }
+    const drawBtn = screen.getByRole('button', { name: /draw · keep all 5 cards/i });
+    expect(drawBtn.className).toContain('from-amber-400');
+
+    fireEvent.click(drawBtn);
+
+    const royalRow = screen.getByTestId('paytable-row-royal_flush');
+    expect(royalRow.className).toContain('border-amber-400/80');
+    expect(screen.getByText(/Royal Flush! Won \+150,000 Credits/i)).toBeTruthy();
+  });
 });
+

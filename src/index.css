@@ -36,3 +36,51 @@
     background: #334155;
   }
 }
+
+@keyframes vpRoyalSweep {
+  0% {
+    transform: translateX(-110%);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.75;
+  }
+  75% {
+    opacity: 0.75;
+  }
+  100% {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+}
+
+@keyframes vpJackpotSettle {
+  0% {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.015);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.vp-royal-sweep {
+  animation: vpRoyalSweep 1.5s cubic-bezier(0.16, 1, 0.3, 1) 1 both;
+}
+
+.vp-jackpot-enter {
+  animation: vpJackpotSettle 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vp-royal-sweep,
+  .vp-jackpot-enter {
+    animation: none;
+  }
+}
+
