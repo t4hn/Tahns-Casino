@@ -99,7 +99,7 @@ export const HomeView: React.FC = () => {
             Games
           </span>
           <span className="text-[10px] text-slate-500 hidden sm:block mt-0.5">
-            4 Mini-Games Ready
+            {games.filter((g) => g.hasPlayableModule).length} Mini-Games Ready
           </span>
         </button>
 

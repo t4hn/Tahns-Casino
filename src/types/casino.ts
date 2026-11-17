@@ -11,6 +11,7 @@ export interface GameProps {
   settle: (bet: number, payout: number) => RoundResult;
   placeBet: (bet: number, payout?: number) => { success: boolean; error?: string };
   resolveRound: (bet: number, payout: number) => RoundResult;
+  updatePendingRound?: (bet: number, payout?: number) => void;
   animations: boolean;
 }
 

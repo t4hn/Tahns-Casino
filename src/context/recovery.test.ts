@@ -251,4 +251,94 @@ describe('Round-in-Progress Interruption & Crash Recovery', () => {
     const levelTwoAch = init.achievements.find((a) => a.id === 'level_two');
     expect(levelTwoAch?.progress).toBe(170);
   });
+
+  it('recovers an interrupted Blackjack 3:2 natural win accurately and clears pending record', () => {
+    const initialProfile = createMockProfile({ credits: 1000, gamesPlayed: 5, totalWinnings: 200 });
+    const bet = 50;
+    const payout = 125; // Natural Blackjack 3:2
+
+    const betRes = placeBetPure(initialProfile, bet);
+    expect(betRes.profile.credits).toBe(950);
+
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
+    localStorage.setItem(
+      `${STORAGE_KEY}_pending_round`,
+      JSON.stringify({
+        gameId: 'blackjack',
+        gameName: 'Blackjack',
+        bet,
+        payout,
+        timestamp: Date.now(),
+      })
+    );
+
+    const init = emulateAppInit(localStorage);
+    expect(init.recoveredActivity).toBe(true);
+    expect(init.profile!.credits).toBe(1075); // 950 + 125
+    expect(init.profile!.gamesPlayed).toBe(6);
+    expect(init.profile!.totalWinnings).toBe(275); // 200 + 75 net
+    expect(localStorage.getItem(`${STORAGE_KEY}_pending_round`)).toBeNull();
+  });
+
+  it('recovers an interrupted Blackjack Double Down round with updated total wager once', () => {
+    const initialProfile = createMockProfile({ credits: 1000, gamesPlayed: 5, totalWinnings: 200 });
+    const afterInitialBet = placeBetPure(initialProfile, 50).profile;
+    const afterDoubleBet = placeBetPure(afterInitialBet, 50).profile;
+    expect(afterDoubleBet.credits).toBe(900);
+
+    // Double Down updated pending_round to totalBet = 100 and payout = 200
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(afterDoubleBet));
+    localStorage.setItem(
+      `${STORAGE_KEY}_pending_round`,
+      JSON.stringify({
+        gameId: 'blackjack',
+        gameName: 'Blackjack',
+        bet: 100,
+        payout: 200,
+        timestamp: Date.now(),
+      })
+    );
+
+    const firstInit = emulateAppInit(localStorage);
+    expect(firstInit.recoveredActivity).toBe(true);
+    expect(firstInit.profile!.credits).toBe(1100); // 900 + 200
+    expect(firstInit.profile!.totalWinnings).toBe(300); // 200 + 100 net
+    expect(firstInit.profile!.gamesPlayed).toBe(6);
+
+    const secondInit = emulateAppInit(localStorage);
+    expect(secondInit.recoveredActivity).toBe(false);
+    expect(secondInit.profile!.credits).toBe(1100);
+  });
+
+  it('recovers an interrupted Video Poker Full House (9:1) win once and clears pending record', () => {
+    const initialProfile = createMockProfile({ credits: 1000, gamesPlayed: 5, totalWinnings: 200 });
+    const bet = 20;
+    const payout = 200; // Full House 9:1 -> +180 net + 20 stake = 200
+
+    const betRes = placeBetPure(initialProfile, bet);
+    expect(betRes.profile.credits).toBe(980);
+
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
+    localStorage.setItem(
+      `${STORAGE_KEY}_pending_round`,
+      JSON.stringify({
+        gameId: 'video-poker',
+        gameName: 'Video Poker Deluxe',
+        bet,
+        payout,
+        timestamp: Date.now(),
+      })
+    );
+
+    const firstInit = emulateAppInit(localStorage);
+    expect(firstInit.recoveredActivity).toBe(true);
+    expect(firstInit.profile!.credits).toBe(1180); // 980 + 200
+    expect(firstInit.profile!.gamesPlayed).toBe(6);
+    expect(firstInit.profile!.totalWinnings).toBe(380); // 200 + 180 net
+    expect(localStorage.getItem(`${STORAGE_KEY}_pending_round`)).toBeNull();
+
+    const secondInit = emulateAppInit(localStorage);
+    expect(secondInit.recoveredActivity).toBe(false);
+    expect(secondInit.profile!.credits).toBe(1180);
+  });
 });

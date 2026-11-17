@@ -6,7 +6,16 @@ import { gameRegistry } from '../games/registry';
 import { soundManager } from '../utils/sound';
 
 export const GameDetailView: React.FC = () => {
-  const { activeGame, exitGame, profile, executeRound, placeBet, resolveRound, settings } = useCasino();
+  const {
+    activeGame,
+    exitGame,
+    profile,
+    executeRound,
+    placeBet,
+    resolveRound,
+    updatePendingRound,
+    settings,
+  } = useCasino();
 
   if (!activeGame || !profile) return null;
 
@@ -37,6 +46,7 @@ export const GameDetailView: React.FC = () => {
           settle={(bet, payout) => executeRound(activeGame.id, activeGame.name, bet, payout)}
           placeBet={(bet, payout) => placeBet(activeGame.id, activeGame.name, bet, payout)}
           resolveRound={(bet, payout) => resolveRound(activeGame.id, activeGame.name, bet, payout)}
+          updatePendingRound={(bet, payout) => updatePendingRound(activeGame.id, activeGame.name, bet, payout)}
           animations={settings.animations !== false}
         />
       </div>

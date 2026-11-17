@@ -462,6 +462,12 @@ interface CasinoContextType {
     payout: number,
     customXp?: number
   ) => SettleResult;
+  updatePendingRound: (
+    gameId: string,
+    gameName: string,
+    bet: number,
+    payout?: number
+  ) => void;
   executeRound: (
     gameId: string,
     gameName: string,
@@ -679,6 +685,24 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       dispatch({ type: 'PLACE_BET', payload: { updatedProfile: betRes.profile } });
 
       return { success: true };
+    },
+    []
+  );
+
+  const updatePendingRound = useCallback(
+    (gameId: string, gameName: string, bet: number, payout?: number) => {
+      try {
+        const pending: PendingRound = {
+          gameId,
+          gameName,
+          bet,
+          payout,
+          timestamp: Date.now(),
+        };
+        localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pending));
+      } catch (e) {
+        console.warn('Storage update failed for pending round', e);
+      }
     },
     []
   );
@@ -997,6 +1021,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         recordActivity,
         placeBet,
         resolveRound,
+        updatePendingRound,
         executeRound,
       }}
     >

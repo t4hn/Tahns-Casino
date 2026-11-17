@@ -8,6 +8,8 @@ import { DEFAULT_SLOTS_CONFIG, SlotsConfig } from './slots/slotsConfig';
 import { NOVA_VOYAGER_CONFIG } from './slots/novaVoyagerConfig';
 import { SlotsGame } from './slots/SlotsGame';
 import { SlotMachine } from './slots/SlotMachine';
+import { BlackjackGame } from './blackjack/BlackjackGame';
+import { VideoPokerGame } from './video-poker/VideoPokerGame';
 
 const DICE_RTP_RANGE = `${(calculateRtp('low') * 100).toFixed(1)}% - ${(calculateRtp('seven') * 100).toFixed(1)}%`;
 const SLOTS_RTP = `${(calculateSlotsRtp(DEFAULT_SLOTS_CONFIG) * 100).toFixed(1)}%`;
@@ -185,6 +187,16 @@ registerGameModule({
 registerGameModule({
   id: 'lucky-slots',
   component: SlotsGame,
+});
+
+registerGameModule({
+  id: 'blackjack',
+  component: BlackjackGame,
+});
+
+registerGameModule({
+  id: 'video-poker',
+  component: VideoPokerGame,
 });
 
 registerSlotMachine(
