@@ -29,9 +29,13 @@ export const GameDetailView: React.FC = () => {
           balance={profile.credits}
           minBet={activeGame.minBet}
           maxBet={activeGame.maxBet}
-          settle={(bet, payout) => executeRound(activeGame.id, activeGame.name, bet, payout)}
+          settle={(bet, payout, meta) =>
+            executeRound(activeGame.id, activeGame.name, bet, payout, undefined, meta)
+          }
           placeBet={(bet, payout, meta) => placeBet(activeGame.id, activeGame.name, bet, payout, meta)}
-          resolveRound={(bet, payout) => resolveRound(activeGame.id, activeGame.name, bet, payout)}
+          resolveRound={(bet, payout, meta) =>
+            resolveRound(activeGame.id, activeGame.name, bet, payout, undefined, meta)
+          }
           updatePendingRound={(bet, payout, meta) =>
             updatePendingRound(activeGame.id, activeGame.name, bet, payout, meta)
           }

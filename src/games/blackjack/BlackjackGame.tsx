@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { GameProps, RoundResult } from '../../types/casino';
+import { GameProps, PendingRoundMeta, RoundResult } from '../../types/casino';
 import {
   BlackjackGameState,
   createInitialBlackjackState,
@@ -17,7 +17,7 @@ import {
 } from './blackjackRules';
 import { getCardPointValue } from './deck';
 import { PlayingCard } from './PlayingCard';
-import { soundManager } from '../../utils/sound';
+import { soundManager, playWinSound } from '../../utils/sound';
 import {
   Sparkles,
   ChevronDown,
@@ -61,6 +61,7 @@ export const BlackjackGame: React.FC<GameProps> = ({
     roundId: string;
     bet: number;
     payout: number;
+    meta?: PendingRoundMeta;
   } | null>(null);
   const settledRoundIdsRef = useRef<Set<string>>(new Set());
 
@@ -84,7 +85,7 @@ export const BlackjackGame: React.FC<GameProps> = ({
       if (pending && !settledRoundIdsRef.current.has(pending.roundId)) {
         settledRoundIdsRef.current.add(pending.roundId);
         pendingEscrowRef.current = null;
-        resolveRoundRef.current(pending.bet, pending.payout);
+        resolveRoundRef.current(pending.bet, pending.payout, pending.meta);
       }
     };
   }, []);
@@ -103,6 +104,29 @@ export const BlackjackGame: React.FC<GameProps> = ({
     [minBet, maxBet]
   );
 
+  const buildBlackjackMeta = (
+    stateSnapshot: BlackjackGameState,
+    resolution: BlackjackResolution | null
+  ): PendingRoundMeta => {
+    if (!resolution) {
+      return { roundId: stateSnapshot.roundId };
+    }
+    const detail =
+      resolution.outcome === 'player_blackjack'
+        ? 'Blackjack 3:2'
+        : stateSnapshot.doubledDown
+        ? `${resolution.message} (2×)`
+        : resolution.message;
+    return {
+      roundId: stateSnapshot.roundId,
+      detail,
+      facts: {
+        blackjackNatural: resolution.outcome === 'player_blackjack',
+        blackjackDoubledWin: Boolean(stateSnapshot.doubledDown && resolution.won),
+      },
+    };
+  };
+
   const settleHandOnce = (
     stateSnapshot: BlackjackGameState,
     resolution: BlackjackResolution
@@ -118,7 +142,12 @@ export const BlackjackGame: React.FC<GameProps> = ({
     settledRoundIdsRef.current.add(stateSnapshot.roundId);
     pendingEscrowRef.current = null;
 
-    const roundRes = resolveRoundRef.current(stateSnapshot.currentBet, resolution.payout);
+    const roundMeta = buildBlackjackMeta(stateSnapshot, resolution);
+    const roundRes = resolveRoundRef.current(
+      stateSnapshot.currentBet,
+      resolution.payout,
+      roundMeta
+    );
     setLastRoundResult(roundRes);
     setGameState(claim.state);
     setIsAnimating(false);
@@ -129,10 +158,12 @@ export const BlackjackGame: React.FC<GameProps> = ({
       return;
     }
 
-    if (resolution.won) {
-      soundManager.playCoin();
+    if (resolution.outcome === 'player_blackjack') {
+      soundManager.playBigWin();
     } else {
-      soundManager.playClick();
+      const betAmount = stateSnapshot.currentBet;
+      const mult = betAmount > 0 ? resolution.payout / betAmount : 0;
+      playWinSound(mult, betAmount);
     }
   };
 
@@ -183,8 +214,10 @@ export const BlackjackGame: React.FC<GameProps> = ({
       immediateNaturalResolution,
     } = dealInitialHand(wager);
 
+    const initialMeta = buildBlackjackMeta(dealtState, dealtState.resolution);
+
     // 2. Place bet into escrow atomically BEFORE any animation
-    const betResult = placeBetRef.current(wager, predeterminedAutoStandPayout);
+    const betResult = placeBetRef.current(wager, predeterminedAutoStandPayout, initialMeta);
     if (!betResult.success) {
       actionLockRef.current = false;
       soundManager.playLocked();
@@ -196,11 +229,12 @@ export const BlackjackGame: React.FC<GameProps> = ({
       roundId: dealtState.roundId,
       bet: wager,
       payout: predeterminedAutoStandPayout,
+      meta: initialMeta,
     };
 
     setErrorMsg(null);
     setLastRoundResult(null);
-    soundManager.playClick();
+    soundManager.playCardDeal();
 
     const useAnimations = animations !== false;
 
@@ -229,17 +263,17 @@ export const BlackjackGame: React.FC<GameProps> = ({
     setVisibleDealerCount(0);
 
     scheduleTimeout(() => {
-      soundManager.playClick();
+      soundManager.playCardDeal();
       setVisibleDealerCount(1);
     }, 120);
 
     scheduleTimeout(() => {
-      soundManager.playClick();
+      soundManager.playCardDeal();
       setVisiblePlayerCount(2);
     }, 240);
 
     scheduleTimeout(() => {
-      soundManager.playClick();
+      soundManager.playCardDeal();
       setVisibleDealerCount(2);
     }, 360);
 
@@ -261,13 +295,15 @@ export const BlackjackGame: React.FC<GameProps> = ({
     totalBet: number,
     initialDealerVisibleCount: number
   ) => {
+    const roundMeta = buildBlackjackMeta(nextState, resolution);
     // Sync pending escrow with final predetermined outcome immediately
     pendingEscrowRef.current = {
       roundId: nextState.roundId,
       bet: totalBet,
       payout: resolution.payout,
+      meta: roundMeta,
     };
-    updatePendingRoundRef.current?.(totalBet, resolution.payout);
+    updatePendingRoundRef.current?.(totalBet, resolution.payout, roundMeta);
 
     const useAnimations = animations !== false;
     if (!useAnimations) {
@@ -293,7 +329,7 @@ export const BlackjackGame: React.FC<GameProps> = ({
 
     for (let i = 1; i <= extraDraws; i++) {
       scheduleTimeout(() => {
-        soundManager.playClick();
+        soundManager.playCardDeal();
         setVisibleDealerCount(initialDealerVisibleCount + i);
       }, i * 320);
     }
@@ -309,18 +345,20 @@ export const BlackjackGame: React.FC<GameProps> = ({
     }
 
     actionLockRef.current = true;
-    soundManager.playClick();
+    soundManager.playCardDeal();
 
     const hitResult = playerHit(gameState);
     const nextState = hitResult.state;
 
     // Update persisted escrow payout immediately
+    const hitMeta = buildBlackjackMeta(nextState, nextState.resolution);
     pendingEscrowRef.current = {
       roundId: nextState.roundId,
       bet: nextState.currentBet,
       payout: hitResult.autoStandPayout,
+      meta: hitMeta,
     };
-    updatePendingRoundRef.current?.(nextState.currentBet, hitResult.autoStandPayout);
+    updatePendingRoundRef.current?.(nextState.currentBet, hitResult.autoStandPayout, hitMeta);
 
     if (hitResult.playerBusted && nextState.resolution) {
       setGameState(nextState);
@@ -377,9 +415,10 @@ export const BlackjackGame: React.FC<GameProps> = ({
     actionLockRef.current = true;
 
     const { state: nextState, additionalWager, resolution } = playerDoubleDown(gameState);
+    const doubleMeta = buildBlackjackMeta(nextState, resolution);
 
     // Deduct additional wager into escrow before revealing cards
-    const extraBetRes = placeBetRef.current(additionalWager, resolution.payout);
+    const extraBetRes = placeBetRef.current(additionalWager, resolution.payout, doubleMeta);
     if (!extraBetRes.success) {
       actionLockRef.current = false;
       soundManager.playLocked();
@@ -387,7 +426,7 @@ export const BlackjackGame: React.FC<GameProps> = ({
       return;
     }
 
-    soundManager.playClick();
+    soundManager.playCardDeal();
     setVisiblePlayerCount(nextState.playerCards.length);
     runDealerRevealSequence(nextState, resolution, nextState.currentBet, 2);
   };
@@ -814,7 +853,7 @@ export const BlackjackGame: React.FC<GameProps> = ({
             <span>
               Limits: {minBet} - {maxBet.toLocaleString()} Credits
             </span>
-            <span>Target RTP: 99.5%</span>
+            <span>~99.5% with basic strategy</span>
           </div>
         </div>
       </details>

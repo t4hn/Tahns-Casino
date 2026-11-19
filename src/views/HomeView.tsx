@@ -13,6 +13,7 @@ import {
 import { useCasino } from '../context/CasinoContext';
 import { CharacterCard } from '../components/CharacterCard';
 import { GameCard } from '../components/GameCard';
+import { OutOfCreditsBanner } from '../components/OutOfCreditsBanner';
 import { soundManager } from '../utils/sound';
 
 export const HomeView: React.FC = () => {
@@ -71,6 +72,8 @@ export const HomeView: React.FC = () => {
       <section aria-label="Character Profile">
         <CharacterCard />
       </section>
+
+      <OutOfCreditsBanner />
 
       {/* ── Quick Access Buttons ── */}
       <section aria-label="Quick Access" className="grid grid-cols-3 gap-2.5 sm:gap-4">

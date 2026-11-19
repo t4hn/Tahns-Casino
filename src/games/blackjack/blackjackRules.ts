@@ -104,7 +104,7 @@ export function playDealerHand(
 
 /**
  * Calculates total returned payout (including the original wager) for a given outcome.
- * - Natural Blackjack: 3:2 (wager + 1.5 * wager = 2.5 * wager, rounded to nearest credit)
+ * - Natural Blackjack: 3:2 (wager + 1.5 * wager = 2.5 * wager, rounded down to a whole credit)
  * - Normal win / dealer bust: 1:1 (2 * wager)
  * - Push: 1x (wager returned)
  * - Loss / bust: 0
@@ -114,7 +114,7 @@ export function calculatePayout(outcome: BlackjackOutcomeType, wager: number): n
 
   switch (outcome) {
     case 'player_blackjack':
-      return Math.round(wager * 2.5);
+      return Math.floor(wager * 2.5);
     case 'player_win':
     case 'dealer_bust':
       return wager * 2;

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { GameProps, RoundResult } from '../../types/casino';
+import { GameProps, PendingRoundMeta, RoundResult } from '../../types/casino';
 import {
   JACKS_OR_BETTER_PAYTABLE,
+  VIDEO_POKER_RTP_LABEL,
   isValidVideoPokerBet,
 } from './videoPokerRules';
 import {
@@ -14,7 +15,7 @@ import {
 } from './videoPokerState';
 import { formatCardAccessibleName } from '../blackjack/deck';
 import { PlayingCard } from '../blackjack/PlayingCard';
-import { soundManager } from '../../utils/sound';
+import { soundManager, playWinSound } from '../../utils/sound';
 import {
   Sparkles,
   Crown,
@@ -60,6 +61,7 @@ export const VideoPokerGame: React.FC<GameProps> = ({
     roundId: string;
     bet: number;
     payout: number;
+    meta?: PendingRoundMeta;
   } | null>(null);
   const settledRoundIdsRef = useRef<Set<string>>(new Set());
 
@@ -83,7 +85,7 @@ export const VideoPokerGame: React.FC<GameProps> = ({
       if (pending && !settledRoundIdsRef.current.has(pending.roundId)) {
         settledRoundIdsRef.current.add(pending.roundId);
         pendingEscrowRef.current = null;
-        resolveRoundRef.current(pending.bet, pending.payout);
+        resolveRoundRef.current(pending.bet, pending.payout, pending.meta);
       }
     };
   }, []);
@@ -123,9 +125,17 @@ export const VideoPokerGame: React.FC<GameProps> = ({
     settledRoundIdsRef.current.add(stateSnapshot.roundId);
     pendingEscrowRef.current = null;
 
+    const roundMeta: PendingRoundMeta = {
+      roundId: stateSnapshot.roundId,
+      detail: stateSnapshot.resolution.name,
+      facts: {
+        videoPokerCategory: stateSnapshot.resolution.category,
+      },
+    };
     const roundRes = resolveRoundRef.current(
       stateSnapshot.bet,
-      stateSnapshot.resolution.totalPayout
+      stateSnapshot.resolution.totalPayout,
+      roundMeta
     );
     setLastRoundResult(roundRes);
     setGameState(claim.state);
@@ -138,11 +148,9 @@ export const VideoPokerGame: React.FC<GameProps> = ({
       return;
     }
 
-    if (stateSnapshot.resolution.won) {
-      soundManager.playCoin();
-    } else {
-      soundManager.playClick();
-    }
+    const betAmount = stateSnapshot.bet;
+    const mult = betAmount > 0 ? stateSnapshot.resolution.totalPayout / betAmount : 0;
+    playWinSound(mult, betAmount);
   };
 
   const handleSelectChip = (amount: number) => {
@@ -177,9 +185,16 @@ export const VideoPokerGame: React.FC<GameProps> = ({
     clearAllTimers();
 
     const { state: dealtState, standPatPayout } = dealInitialPokerHand(wager);
+    const dealMeta: PendingRoundMeta = {
+      roundId: dealtState.roundId,
+      detail: dealtState.initialEvaluation?.name || 'Stand Pat',
+      facts: dealtState.initialEvaluation
+        ? { videoPokerCategory: dealtState.initialEvaluation.category }
+        : undefined,
+    };
 
     // Deduct wager via shared escrow BEFORE any animation
-    const betRes = placeBetRef.current(wager, standPatPayout);
+    const betRes = placeBetRef.current(wager, standPatPayout, dealMeta);
     if (!betRes.success) {
       actionLockRef.current = false;
       soundManager.playLocked();
@@ -191,16 +206,17 @@ export const VideoPokerGame: React.FC<GameProps> = ({
       roundId: dealtState.roundId,
       bet: wager,
       payout: standPatPayout,
+      meta: dealMeta,
     };
 
     setErrorMsg(null);
     setLastRoundResult(null);
     setHiddenReplaceSlots(new Set());
     setGameState(dealtState);
-    soundManager.playClick();
 
     const useAnimations = animations !== false;
     if (!useAnimations) {
+      soundManager.playCardDeal();
       setVisibleDealCount(5);
       setIsAnimating(false);
       actionLockRef.current = false;
@@ -212,7 +228,7 @@ export const VideoPokerGame: React.FC<GameProps> = ({
 
     for (let i = 1; i <= 5; i++) {
       scheduleTimeout(() => {
-        soundManager.playClick();
+        soundManager.playCardDeal();
         setVisibleDealCount(i);
       }, i * 65);
     }
@@ -242,21 +258,32 @@ export const VideoPokerGame: React.FC<GameProps> = ({
 
     actionLockRef.current = true;
     clearAllTimers();
-    soundManager.playClick();
 
     const { state: drawingState, resolution, replacedIndices } =
       drawReplacementCards(gameState);
+
+    const drawMeta: PendingRoundMeta = {
+      roundId: drawingState.roundId,
+      detail: resolution.name,
+      facts: {
+        videoPokerCategory: resolution.category,
+      },
+    };
 
     // Sync persisted escrow with final predetermined outcome immediately
     pendingEscrowRef.current = {
       roundId: drawingState.roundId,
       bet: drawingState.bet,
       payout: resolution.totalPayout,
+      meta: drawMeta,
     };
-    updatePendingRoundRef.current?.(drawingState.bet, resolution.totalPayout);
+    updatePendingRoundRef.current?.(drawingState.bet, resolution.totalPayout, drawMeta);
 
     const useAnimations = animations !== false;
     if (!useAnimations || replacedIndices.length === 0) {
+      if (replacedIndices.length > 0) {
+        soundManager.playCardDeal();
+      }
       setGameState(drawingState);
       setVisibleDealCount(5);
       settleHandOnce(drawingState);
@@ -271,7 +298,7 @@ export const VideoPokerGame: React.FC<GameProps> = ({
 
     replacedIndices.forEach((slotIdx, step) => {
       scheduleTimeout(() => {
-        soundManager.playClick();
+        soundManager.playCardDeal();
         setHiddenReplaceSlots((prev) => {
           const next = new Set(prev);
           next.delete(slotIdx);
@@ -854,7 +881,7 @@ export const VideoPokerGame: React.FC<GameProps> = ({
             <span>
               Limits: {minBet} - {maxBet.toLocaleString()} Credits
             </span>
-            <span>Target RTP: 99.2%</span>
+            <span>{VIDEO_POKER_RTP_LABEL}</span>
           </div>
         </div>
       </details>

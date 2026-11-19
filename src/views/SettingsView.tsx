@@ -34,7 +34,7 @@ export const SettingsView: React.FC = () => {
   if (!profile) return null;
 
   const handleTestSound = () => {
-    soundManager.playBonusClaim();
+    soundManager.playSmallWin();
     setTestNotification('Synthesized chime triggered successfully.');
     setTimeout(() => setTestNotification(null), 2500);
   };

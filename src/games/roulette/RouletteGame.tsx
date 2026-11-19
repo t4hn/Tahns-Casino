@@ -10,7 +10,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { GameProps, RoundResult } from '../../types/casino';
+import { GameProps, PendingRoundMeta, RoundResult } from '../../types/casino';
 import {
   PAYTABLE_INFO,
   ROULETTE_CHIP_VALUES,
@@ -35,7 +35,7 @@ import {
 } from './rouletteHistoryStorage';
 import { RouletteWheel } from './RouletteWheel';
 import { RouletteTable } from './RouletteTable';
-import { soundManager } from '../../utils/sound';
+import { soundManager, playWinSound } from '../../utils/sound';
 
 function getChipButtonPalette(value: number): string {
   switch (value) {
@@ -79,6 +79,7 @@ export const RouletteGame: React.FC<GameProps> = ({
     bet: number;
     payout: number;
     historyEntry: SpinHistoryEntry;
+    meta: PendingRoundMeta;
   } | null>(null);
   const settledRoundIdsRef = useRef<Set<string>>(new Set());
   const latestGameStateRef = useRef<RouletteGameState>(gameState);
@@ -98,7 +99,7 @@ export const RouletteGame: React.FC<GameProps> = ({
       if (pending && !settledRoundIdsRef.current.has(pending.roundId)) {
         settledRoundIdsRef.current.add(pending.roundId);
         pendingEscrowRef.current = null;
-        const settled = resolveRoundRef.current(pending.bet, pending.payout);
+        const settled = resolveRoundRef.current(pending.bet, pending.payout, pending.meta);
         if (settled.success) {
           appendRouletteHistoryEntry(pending.historyEntry);
         }
@@ -131,7 +132,7 @@ export const RouletteGame: React.FC<GameProps> = ({
       setErrorMsg(res.reason || 'Cannot place chip.');
       return;
     }
-    soundManager.playClick();
+    soundManager.playChipPlace();
     setGameState(res.state);
     setErrorMsg(null);
     if (isSettled) {
@@ -167,7 +168,7 @@ export const RouletteGame: React.FC<GameProps> = ({
       setErrorMsg(res.reason || 'Cannot repeat previous bets.');
       return;
     }
-    soundManager.playClick();
+    soundManager.playChipPlace();
     setGameState(res.state);
     setRemoveMode(false);
     setErrorMsg(null);
@@ -211,8 +212,30 @@ export const RouletteGame: React.FC<GameProps> = ({
     setErrorMsg(null);
     setLastRoundResult(null);
 
-    const pendingMeta = {
+    const colorLabel =
+      evaluationResult.winningColor === 'green'
+        ? 'Green'
+        : evaluationResult.winningColor === 'red'
+        ? 'Red'
+        : 'Black';
+    const detail =
+      evaluationResult.winningNumber === 0
+        ? 'Zero 0 (Green)'
+        : `${colorLabel} ${evaluationResult.winningNumber}`;
+    const rouletteWonStraightUp = evaluationResult.betResults.some(
+      (r) => r.won && r.type === 'straight'
+    );
+    const rouletteRedBlackWins = evaluationResult.betResults.filter(
+      (r) => r.won && (r.type === 'red' || r.type === 'black')
+    ).length;
+
+    const pendingMeta: PendingRoundMeta = {
       roundId: prepared.state.roundId,
+      detail,
+      facts: {
+        rouletteWonStraightUp,
+        rouletteRedBlackWins,
+      },
       rouletteResult: pendingHistoryEntry,
     };
 
@@ -229,6 +252,7 @@ export const RouletteGame: React.FC<GameProps> = ({
       bet: total,
       payout: expectedPayout,
       historyEntry: pendingHistoryEntry,
+      meta: pendingMeta,
     };
     updatePendingRoundRef.current?.(total, expectedPayout, pendingMeta);
 
@@ -246,10 +270,11 @@ export const RouletteGame: React.FC<GameProps> = ({
 
     settledRoundIdsRef.current.add(current.roundId);
     const pendingEntry = pendingEscrowRef.current?.historyEntry;
+    const pendingMeta = pendingEscrowRef.current?.meta;
     pendingEscrowRef.current = null;
 
     const { totalWager: roundBet, totalGrossPayout, net } = current.evaluation;
-    const settledRes = resolveRoundRef.current(roundBet, totalGrossPayout);
+    const settledRes = resolveRoundRef.current(roundBet, totalGrossPayout, pendingMeta);
 
     if (!settledRes.success) {
       setGameState((prev) => ({
@@ -284,11 +309,7 @@ export const RouletteGame: React.FC<GameProps> = ({
     setLastRoundResult(settledRes);
     actionLockRef.current = false;
 
-    if (totalGrossPayout > 0 && net >= 0) {
-      soundManager.playCoin();
-    } else {
-      soundManager.playClick();
-    }
+    playWinSound(roundBet > 0 ? totalGrossPayout / roundBet : 0, roundBet);
   };
 
   const evaluation = gameState.evaluation;
@@ -597,6 +618,12 @@ export const RouletteGame: React.FC<GameProps> = ({
               </div>
             </div>
 
+            {balance < minBet && !isSpinning && (
+              <p className="text-amber-400 text-xs font-medium text-center sm:text-left">
+                You need at least {minBet} credits to play
+              </p>
+            )}
+
             {/* Primary & Secondary Action Bar */}
             <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
               {/* Secondary Bet Utilities */}
@@ -654,13 +681,15 @@ export const RouletteGame: React.FC<GameProps> = ({
               ) : (
                 <button
                   type="button"
-                  disabled={isSpinning || !wagerValidation.valid}
+                  disabled={isSpinning || balance < minBet || !wagerValidation.valid}
                   onClick={handleSpin}
                   className="px-7 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-slate-950 font-bold text-sm tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 disabled:shadow-none active:scale-[0.98] transition-all min-h-[46px] cursor-pointer disabled:cursor-not-allowed"
                 >
                   <Sparkles size={16} />
                   <span>
-                    {isSpinning
+                    {balance < minBet
+                      ? `You need at least ${minBet} credits to play`
+                      : isSpinning
                       ? 'SPINNING...'
                       : totalWager > 0 && totalWager < minBet
                       ? `MIN BET ${minBet} CR`

@@ -5,6 +5,7 @@ import {
   getPocketColor,
   getWheelIndex,
 } from './rouletteRules';
+import { soundManager } from '../../utils/sound';
 
 interface RouletteWheelProps {
   winningNumber: number | null;
@@ -69,6 +70,8 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
   const wheelRotRef = useRef<number>(0);
   const ballAngleRef = useRef<number>(0);
+  const lastBallTickDegRef = useRef<number>(0);
+  const lastTickTimeRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
   const onSpinCompleteRef = useRef(onSpinComplete);
   onSpinCompleteRef.current = onSpinComplete;
@@ -126,6 +129,8 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
     const durationMs = 2600;
     const startTime = performance.now();
+    lastBallTickDegRef.current = startBall;
+    lastTickTimeRef.current = startTime;
 
     const tick = (now: number) => {
       const elapsed = now - startTime;
@@ -136,6 +141,16 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
 
       const currentW = startWheel + (targetWheel - startWheel) * wProgress;
       const currentB = startBall + (targetBall - startBall) * bProgress;
+
+      if (
+        t < 0.94 &&
+        currentB - lastBallTickDegRef.current >= 28 &&
+        now - lastTickTimeRef.current >= 55
+      ) {
+        lastBallTickDegRef.current = currentB;
+        lastTickTimeRef.current = now;
+        soundManager.playTick();
+      }
 
       // Ball stays on outer mahogany track (r=157) until t=0.58, then drops inward to pocket (r=107)
       let currentR = 157;

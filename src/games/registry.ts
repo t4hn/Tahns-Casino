@@ -10,6 +10,7 @@ import { SlotsGame } from './slots/SlotsGame';
 import { SlotMachine } from './slots/SlotMachine';
 import { BlackjackGame } from './blackjack/BlackjackGame';
 import { VideoPokerGame } from './video-poker/VideoPokerGame';
+import { VIDEO_POKER_RTP_LABEL } from './video-poker/videoPokerRules';
 import { RouletteGame } from './roulette/RouletteGame';
 import { KenoGame } from './keno/KenoGame';
 import { calculateKenoAverageRtp } from './keno/kenoRules';
@@ -36,7 +37,7 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     id: 'blackjack',
     name: 'Blackjack',
     category: 'Cards',
-    description: 'Premier single-deck table. Dealer stands on all 17s; blackjack awards 3 to 2 with insurance options.',
+    description: 'Premier single-deck table. Dealer stands on all 17s; blackjack pays 3 to 2; double down on any two cards.',
     imageUrl: '/images/game_blackjack_1793671236023.jpg',
     minBet: 25,
     maxBet: 1000,
@@ -84,7 +85,7 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     imageUrl: '/images/game_blackjack_1793671236023.jpg',
     minBet: 20,
     maxBet: 1000,
-    payoutRate: '99.2%',
+    payoutRate: VIDEO_POKER_RTP_LABEL,
     volatility: 'Medium',
   },
   {

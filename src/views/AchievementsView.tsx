@@ -10,6 +10,14 @@ import {
   CheckCircle2,
   Lock,
   Gift,
+  Spade,
+  Layers,
+  Target,
+  CircleDot,
+  Star,
+  Rocket,
+  Flame,
+  Sparkles,
 } from 'lucide-react';
 import { useCasino } from '../context/CasinoContext';
 import { CurrencyDisplay } from '../components/CurrencyDisplay';
@@ -31,6 +39,24 @@ export const AchievementsView: React.FC = () => {
         return <Coins size={18} />;
       case 'Crown':
         return <Crown size={18} />;
+      case 'Spade':
+        return <Spade size={18} />;
+      case 'Layers':
+        return <Layers size={18} />;
+      case 'Target':
+        return <Target size={18} />;
+      case 'CircleDot':
+        return <CircleDot size={18} />;
+      case 'Star':
+        return <Star size={18} />;
+      case 'Rocket':
+        return <Rocket size={18} />;
+      case 'Flame':
+        return <Flame size={18} />;
+      case 'Sparkles':
+        return <Sparkles size={18} />;
+      case 'Trophy':
+        return <Trophy size={18} />;
       default:
         return <Award size={18} />;
     }

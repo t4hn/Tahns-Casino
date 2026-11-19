@@ -36,6 +36,21 @@ import {
 } from '../data/initialData';
 import { gameRegistry } from '../games/registry';
 import { soundManager } from '../utils/sound';
+import {
+  StatsState,
+  RoundRecord,
+  createEmptyStatsState,
+  computeRoundMultiplier,
+  recordRoundWithHistory,
+  serializeStatsPayload,
+  deserializeStatsPayload,
+  serializeHistoryPayload,
+  deserializeHistoryPayload,
+} from '../economy/stats';
+import {
+  evaluateRoundAchievements,
+  mergeAchievements,
+} from '../economy/achievements';
 
 const STORAGE_KEY = 'tahns_casino_v2';
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -46,6 +61,8 @@ interface CasinoState {
   achievements: Achievement[];
   activities: ActivityItem[];
   settings: CasinoSettings;
+  stats: StatsState;
+  roundHistory: RoundRecord[];
   currentTab: NavTab;
   activeGameId: string | null;
   visitedGameIds: string[];
@@ -57,7 +74,15 @@ type CasinoAction =
   | { type: 'CREATE_CHARACTER'; payload: { name: string; avatarUrl: string } }
   | { type: 'UPDATE_PROFILE'; payload: { name: string; avatarUrl: string } }
   | { type: 'PLACE_BET'; payload: { updatedProfile: WalletProfile } }
-  | { type: 'RESOLVE_ROUND'; payload: { updatedProfile: WalletProfile } }
+  | {
+      type: 'RESOLVE_ROUND';
+      payload: {
+        updatedProfile: WalletProfile;
+        updatedStats: StatsState;
+        updatedHistory: RoundRecord[];
+        updatedAchievements: Achievement[];
+      };
+    }
   | { type: 'SETTLE_ROUND'; payload: { updatedProfile: WalletProfile } }
   | { type: 'CLAIM_DAILY_BONUS'; payload: { updatedProfile: WalletProfile } }
   | { type: 'FAST_FORWARD_DAILY_BONUS' }
@@ -120,6 +145,9 @@ function casinoReducer(state: CasinoState, action: CasinoAction): CasinoState {
       return {
         ...state,
         profile: action.payload.updatedProfile,
+        stats: action.payload.updatedStats,
+        roundHistory: action.payload.updatedHistory,
+        achievements: action.payload.updatedAchievements,
       };
     }
 
@@ -229,9 +257,11 @@ function casinoReducer(state: CasinoState, action: CasinoAction): CasinoState {
     case 'RESET_PROGRESS': {
       return {
         profile: null,
-        achievements: INITIAL_ACHIEVEMENTS,
+        achievements: INITIAL_ACHIEVEMENTS.map((a) => ({ ...a })),
         activities: INITIAL_ACTIVITIES,
         settings: INITIAL_SETTINGS,
+        stats: createEmptyStatsState(),
+        roundHistory: [],
         currentTab: 'home',
         activeGameId: null,
         visitedGameIds: [],
@@ -306,6 +336,8 @@ export interface RecoveryOutcome {
   profile: WalletProfile;
   achievements: Achievement[];
   activities: ActivityItem[];
+  stats: StatsState;
+  roundHistory: RoundRecord[];
   recovered: boolean;
   result?: SettleResult;
 }
@@ -314,7 +346,9 @@ export function recoverInterruptedRound(
   profile: WalletProfile,
   achievements: Achievement[],
   activities: ActivityItem[],
-  pending: PendingRound
+  pending: PendingRound,
+  stats: StatsState = createEmptyStatsState(),
+  roundHistory: RoundRecord[] = []
 ): RecoveryOutcome {
   const recoveryPayout = typeof pending.payout === 'number' ? pending.payout : 0;
   const { profile: updatedProfile, result } = resolveRoundPure(
@@ -352,30 +386,70 @@ export function recoverInterruptedRound(
     updatedActivities = [levelActivity, ...updatedActivities.slice(0, 19)];
   }
 
-  // Update achievements exactly like a normally resolved round
-  let updatedAchievements = updateAchievementProgressPure(
-    achievements,
-    'first_wager',
-    1,
-    true
+  let recoveredDetail = pending.meta?.detail;
+  if (!recoveredDetail && pending.meta?.rouletteResult) {
+    const r = pending.meta.rouletteResult;
+    const cLabel =
+      r.color === 'green' ? 'Green' : r.color === 'red' ? 'Red' : 'Black';
+    recoveredDetail = r.number === 0 ? 'Zero 0 (Green)' : `${cLabel} ${r.number}`;
+  } else if (!recoveredDetail && pending.meta?.kenoResult) {
+    const k = pending.meta.kenoResult;
+    recoveredDetail = `Keno ${k.spotCount} spots, ${k.hits} hits`;
+  }
+
+  const recordId =
+    pending.meta?.roundId ||
+    `recovered_${pending.timestamp || Date.now()}_${pending.gameId || 'game'}`;
+
+  const roundRecord: RoundRecord = {
+    id: recordId,
+    gameId: pending.gameId || 'unknown',
+    gameName: pending.gameName || pending.gameId || 'Game',
+    timestamp: Date.now(),
+    bet: pending.bet,
+    payout: recoveryPayout,
+    net: result.net,
+    multiplier: computeRoundMultiplier(pending.bet, recoveryPayout),
+    ...(recoveredDetail ? { detail: recoveredDetail } : {}),
+    recovered: true,
+  };
+
+  const { stats: nextStats, history: nextHistory } = recordRoundWithHistory(
+    stats,
+    roundHistory,
+    roundRecord
   );
-  updatedAchievements = updateAchievementProgressPure(
-    updatedAchievements,
-    'high_roller',
-    updatedProfile.credits,
-    true
-  );
-  updatedAchievements = updateAchievementProgressPure(
-    updatedAchievements,
-    'level_two',
-    updatedProfile.xp,
-    true
-  );
+
+  const mergedBase = mergeAchievements(achievements, INITIAL_ACHIEVEMENTS);
+  const { achievements: updatedAchievements, newlyUnlocked } =
+    evaluateRoundAchievements({
+      achievements: mergedBase,
+      stats: nextStats,
+      record: roundRecord,
+      facts: pending.meta?.facts,
+      profileCredits: updatedProfile.credits,
+      profileXp: updatedProfile.xp,
+    });
+
+  if (newlyUnlocked.length > 0) {
+    for (const ach of newlyUnlocked) {
+      const achActivity: ActivityItem = {
+        id: `act_${Date.now()}_ach_unlock_${ach.id}`,
+        type: 'achievement',
+        title: 'Honors Unlocked',
+        description: `Unlocked "${ach.title}" — Claim +${ach.rewardCredits.toLocaleString()} Credits & +${ach.rewardXp} XP`,
+        timestamp: Date.now() + 2,
+      };
+      updatedActivities = [achActivity, ...updatedActivities.slice(0, 19)];
+    }
+  }
 
   return {
     profile: updatedProfile,
     achievements: updatedAchievements,
     activities: updatedActivities,
+    stats: nextStats,
+    roundHistory: nextHistory,
     recovered: true,
     result,
   };
@@ -384,9 +458,11 @@ export function recoverInterruptedRound(
 // ── Initial State Loader (Pure from storage inputs, without side-effects) ──
 function loadInitialState(): CasinoState {
   let profile: WalletProfile | null = null;
-  let achievements: Achievement[] = INITIAL_ACHIEVEMENTS;
+  let achievements: Achievement[] = INITIAL_ACHIEVEMENTS.map((a) => ({ ...a }));
   let activities: ActivityItem[] = INITIAL_ACTIVITIES;
   let settings: CasinoSettings = INITIAL_SETTINGS;
+  let stats: StatsState = createEmptyStatsState();
+  let roundHistory: RoundRecord[] = [];
 
   try {
     const savedProfile = localStorage.getItem(`${STORAGE_KEY}_profile`);
@@ -403,7 +479,7 @@ function loadInitialState(): CasinoState {
   try {
     const savedAchievements = localStorage.getItem(`${STORAGE_KEY}_achievements`);
     if (savedAchievements) {
-      achievements = JSON.parse(savedAchievements);
+      achievements = mergeAchievements(JSON.parse(savedAchievements), INITIAL_ACHIEVEMENTS);
     }
   } catch {
     // ignore
@@ -427,6 +503,18 @@ function loadInitialState(): CasinoState {
     // ignore
   }
 
+  try {
+    stats = deserializeStatsPayload(localStorage.getItem(`${STORAGE_KEY}_stats`));
+  } catch {
+    // ignore
+  }
+
+  try {
+    roundHistory = deserializeHistoryPayload(localStorage.getItem(`${STORAGE_KEY}_history`));
+  } catch {
+    // ignore
+  }
+
   let visitedGameIds: string[] = [];
   try {
     const savedVisited = localStorage.getItem(`${STORAGE_KEY}_visited_games`);
@@ -442,10 +530,19 @@ function loadInitialState(): CasinoState {
     const savedPending = localStorage.getItem(`${STORAGE_KEY}_pending_round`);
     if (savedPending && profile) {
       const pending = JSON.parse(savedPending) as PendingRound;
-      const recovery = recoverInterruptedRound(profile, achievements, activities, pending);
+      const recovery = recoverInterruptedRound(
+        profile,
+        achievements,
+        activities,
+        pending,
+        stats,
+        roundHistory
+      );
       profile = recovery.profile;
       achievements = recovery.achievements;
       activities = recovery.activities;
+      stats = recovery.stats;
+      roundHistory = recovery.roundHistory;
     }
   } catch {
     // ignore
@@ -456,6 +553,8 @@ function loadInitialState(): CasinoState {
     achievements,
     activities,
     settings,
+    stats,
+    roundHistory,
     currentTab: 'home',
     activeGameId: null,
     visitedGameIds,
@@ -470,6 +569,8 @@ interface CasinoContextType {
   achievements: Achievement[];
   activities: ActivityItem[];
   settings: CasinoSettings;
+  stats: StatsState;
+  roundHistory: RoundRecord[];
   currentTab: NavTab;
   activeGame: GameItem | null;
   levelInfo: LevelInfo;
@@ -500,7 +601,8 @@ interface CasinoContextType {
     gameName: string,
     bet: number,
     payout: number,
-    customXp?: number
+    customXp?: number,
+    meta?: PendingRoundMeta
   ) => SettleResult;
   updatePendingRound: (
     gameId: string,
@@ -514,7 +616,8 @@ interface CasinoContextType {
     gameName: string,
     bet: number,
     payout: number,
-    customXp?: number
+    customXp?: number,
+    meta?: PendingRoundMeta
   ) => SettleResult;
 }
 
@@ -523,9 +626,16 @@ const CasinoContext = createContext<CasinoContextType | undefined>(undefined);
 export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(casinoReducer, undefined, loadInitialState);
 
-  // Profile ref updated on every render to ensure latest state is read without stale closures
+  // Refs updated on every render and synchronously in handlers to avoid stale closures on rapid rounds
   const profileRef = useRef<WalletProfile | null>(state.profile);
   profileRef.current = state.profile;
+  const statsRef = useRef<StatsState>(state.stats);
+  statsRef.current = state.stats;
+  const historyRef = useRef<RoundRecord[]>(state.roundHistory);
+  historyRef.current = state.roundHistory;
+  const achievementsRef = useRef<Achievement[]>(state.achievements);
+  achievementsRef.current = state.achievements;
+  const pendingMetaRef = useRef<{ gameId: string; meta?: PendingRoundMeta } | null>(null);
 
   // Sync sound settings with soundManager
   useEffect(() => {
@@ -617,6 +727,28 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('Storage failed for visited games', e);
     }
   }, [state.visitedGameIds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `${STORAGE_KEY}_stats`,
+        JSON.stringify(serializeStatsPayload(state.stats))
+      );
+    } catch (e) {
+      console.warn('Storage failed for stats', e);
+    }
+  }, [state.stats]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `${STORAGE_KEY}_history`,
+        JSON.stringify(serializeHistoryPayload(state.roundHistory))
+      );
+    } catch (e) {
+      console.warn('Storage failed for history', e);
+    }
+  }, [state.roundHistory]);
 
   // ── Derived Level & Title ──
   const levelInfo = useMemo(() => {
@@ -714,6 +846,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       profileRef.current = betRes.profile;
+      pendingMetaRef.current = { gameId, meta };
 
       // Persist pending round and latest profile to localStorage immediately
       try {
@@ -746,6 +879,15 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       payout?: number,
       meta?: PendingRoundMeta
     ) => {
+      const mergedMeta: PendingRoundMeta | undefined =
+        meta || (pendingMetaRef.current?.gameId === gameId ? pendingMetaRef.current.meta : undefined)
+          ? {
+              ...(pendingMetaRef.current?.gameId === gameId ? pendingMetaRef.current.meta : {}),
+              ...(meta || {}),
+            }
+          : undefined;
+      pendingMetaRef.current = { gameId, meta: mergedMeta };
+
       try {
         const pending: PendingRound = {
           gameId,
@@ -753,7 +895,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           bet,
           payout,
           timestamp: Date.now(),
-          ...(meta ? { meta } : {}),
+          ...(mergedMeta ? { meta: mergedMeta } : {}),
         };
         localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pending));
       } catch (e) {
@@ -769,7 +911,8 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       gameName: string,
       bet: number,
       payout: number,
-      customXp?: number
+      customXp?: number,
+      meta?: PendingRoundMeta
     ): SettleResult => {
       // Clear pending round from localStorage immediately upon resolution
       try {
@@ -777,6 +920,13 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {
         console.warn('Storage cleanup failed for pending round', e);
       }
+
+      const storedMeta =
+        pendingMetaRef.current?.gameId === gameId ? pendingMetaRef.current.meta : undefined;
+      pendingMetaRef.current = null;
+
+      const effectiveMeta: PendingRoundMeta | undefined =
+        storedMeta || meta ? { ...(storedMeta || {}), ...(meta || {}) } : undefined;
 
       const currentProfile = profileRef.current;
       if (!currentProfile) {
@@ -799,16 +949,58 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         customXp
       );
 
-      profileRef.current = updatedProfile;
-      dispatch({ type: 'RESOLVE_ROUND', payload: { updatedProfile } });
+      if (!result.success) {
+        return result;
+      }
 
-      // Side effects: Sounds
+      profileRef.current = updatedProfile;
+
+      const roundRecord: RoundRecord = {
+        id:
+          effectiveMeta?.roundId ||
+          `round_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        gameId,
+        gameName,
+        timestamp: Date.now(),
+        bet,
+        payout,
+        net: result.net,
+        multiplier: computeRoundMultiplier(bet, payout),
+        ...(effectiveMeta?.detail ? { detail: effectiveMeta.detail } : {}),
+      };
+
+      const { stats: nextStats, history: nextHistory } = recordRoundWithHistory(
+        statsRef.current,
+        historyRef.current,
+        roundRecord
+      );
+      statsRef.current = nextStats;
+      historyRef.current = nextHistory;
+
+      const { achievements: nextAchievements, newlyUnlocked } =
+        evaluateRoundAchievements({
+          achievements: achievementsRef.current,
+          stats: nextStats,
+          record: roundRecord,
+          facts: effectiveMeta?.facts,
+          profileCredits: updatedProfile.credits,
+          profileXp: updatedProfile.xp,
+        });
+      achievementsRef.current = nextAchievements;
+
+      dispatch({
+        type: 'RESOLVE_ROUND',
+        payload: {
+          updatedProfile,
+          updatedStats: nextStats,
+          updatedHistory: nextHistory,
+          updatedAchievements: nextAchievements,
+        },
+      });
+
+      // Side effects: Level-up celebration (win/push/loss audio is played once on reveal by each game)
       if (result.leveledUp) {
         soundManager.playLevelUp();
-      } else if (result.won) {
-        soundManager.playCoin();
-      } else {
-        soundManager.playClick();
       }
 
       // Side effects: Activity logging with ACCURATE types
@@ -852,19 +1044,19 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         dispatch({ type: 'RECORD_ACTIVITY', payload: levelActivity });
       }
 
-      // Milestone progress
-      dispatch({
-        type: 'UPDATE_ACHIEVEMENT_PROGRESS',
-        payload: { achievementId: 'first_wager', value: 1, isAbsolute: true },
-      });
-      dispatch({
-        type: 'UPDATE_ACHIEVEMENT_PROGRESS',
-        payload: { achievementId: 'high_roller', value: updatedProfile.credits, isAbsolute: true },
-      });
-      dispatch({
-        type: 'UPDATE_ACHIEVEMENT_PROGRESS',
-        payload: { achievementId: 'level_two', value: updatedProfile.xp, isAbsolute: true },
-      });
+      if (newlyUnlocked.length > 0) {
+        soundManager.playBonusClaim();
+        for (const ach of newlyUnlocked) {
+          const achActivity: ActivityItem = {
+            id: `act_${Date.now()}_ach_unlock_${ach.id}`,
+            type: 'achievement',
+            title: 'Honors Unlocked',
+            description: `Unlocked "${ach.title}" — Claim +${ach.rewardCredits.toLocaleString()} Credits & +${ach.rewardXp} XP`,
+            timestamp: Date.now() + 2,
+          };
+          dispatch({ type: 'RECORD_ACTIVITY', payload: achActivity });
+        }
+      }
 
       return result;
     },
@@ -877,9 +1069,10 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       gameName: string,
       bet: number,
       payout: number,
-      customXp?: number
+      customXp?: number,
+      meta?: PendingRoundMeta
     ): SettleResult => {
-      const betRes = placeBet(gameId, gameName, bet, payout);
+      const betRes = placeBet(gameId, gameName, bet, payout, meta);
       if (!betRes.success) {
         return {
           success: false,
@@ -892,7 +1085,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           error: betRes.error,
         };
       }
-      return resolveRound(gameId, gameName, bet, payout, customXp);
+      return resolveRound(gameId, gameName, bet, payout, customXp, meta);
     },
     [placeBet, resolveRound]
   );
@@ -1035,6 +1228,11 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const resetProgress = useCallback(() => {
     soundManager.playClick();
+    profileRef.current = null;
+    statsRef.current = createEmptyStatsState();
+    historyRef.current = [];
+    achievementsRef.current = INITIAL_ACHIEVEMENTS.map((a) => ({ ...a }));
+    pendingMetaRef.current = null;
     try {
       localStorage.removeItem(`${STORAGE_KEY}_profile`);
       localStorage.removeItem(`${STORAGE_KEY}_achievements`);
@@ -1043,6 +1241,8 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       localStorage.removeItem(`${STORAGE_KEY}_games`);
       localStorage.removeItem(`${STORAGE_KEY}_visited_games`);
       localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
+      localStorage.removeItem(`${STORAGE_KEY}_stats`);
+      localStorage.removeItem(`${STORAGE_KEY}_history`);
       clearRouletteHistory();
       clearKenoPersistence();
     } catch {
@@ -1059,6 +1259,8 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         achievements: state.achievements,
         activities: state.activities,
         settings: state.settings,
+        stats: state.stats,
+        roundHistory: state.roundHistory,
         currentTab: state.currentTab,
         activeGame,
         levelInfo,

@@ -22,6 +22,7 @@ import { useCasino } from '../context/CasinoContext';
 import { AVATAR_OPTIONS } from '../data/initialData';
 import { getLevelRoadmap } from '../economy/wallet';
 import { soundManager } from '../utils/sound';
+import { CasinoRecordSection } from '../components/CasinoRecordSection';
 
 export const ProfileView: React.FC = () => {
   const {
@@ -601,6 +602,9 @@ export const ProfileView: React.FC = () => {
           </button>
         </section>
       </div>
+
+      {/* ── Section 5: Casino Record (Stats & Round History) ── */}
+      <CasinoRecordSection />
     </div>
   );
 };

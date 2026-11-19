@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Gamepad2, Search, SlidersHorizontal, Lock, Check } from 'lucide-react';
 import { useCasino } from '../context/CasinoContext';
 import { GameCard } from '../components/GameCard';
+import { OutOfCreditsBanner } from '../components/OutOfCreditsBanner';
 import { GameCategory } from '../types/casino';
 import { soundManager } from '../utils/sound';
 
@@ -33,6 +34,8 @@ export const GamesView: React.FC = () => {
           <span>{games.length} Floor Tables</span>
         </div>
       </div>
+
+      <OutOfCreditsBanner />
 
       {/* ── Filters & Search ── */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2 bg-[#0f141d] border border-slate-800 rounded-2xl">

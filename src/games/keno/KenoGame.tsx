@@ -10,7 +10,7 @@ import {
   Trash2,
   TrendingUp,
 } from 'lucide-react';
-import { GameProps, RoundResult } from '../../types/casino';
+import { GameProps, PendingRoundMeta, RoundResult } from '../../types/casino';
 import {
   KENO_CHIP_PRESETS,
   KENO_DRAW_COUNT,
@@ -42,7 +42,7 @@ import {
 import { KenoBoard } from './KenoBoard';
 import { KenoDrawChamber } from './KenoDrawChamber';
 import { KenoIcon } from './KenoIcon';
-import { soundManager } from '../../utils/sound';
+import { soundManager, playWinSound } from '../../utils/sound';
 
 const KENO_BALL_INTERVAL_MS = 350; // 20 balls * 350ms = 7.0s complete draw
 const KENO_AVG_RTP_PERCENT = (calculateKenoAverageRtp() * 100).toFixed(1);
@@ -83,6 +83,7 @@ export const KenoGame: React.FC<GameProps> = ({
     wager: number;
     grossPayout: number;
     historyEntry: KenoHistoryEntry;
+    meta: PendingRoundMeta;
   } | null>(null);
   const settledRoundIdsRef = useRef<Set<string>>(new Set());
   const latestStateRef = useRef<KenoGameState>(gameState);
@@ -110,7 +111,7 @@ export const KenoGame: React.FC<GameProps> = ({
       if (pending && !settledRoundIdsRef.current.has(pending.roundId)) {
         settledRoundIdsRef.current.add(pending.roundId);
         pendingEscrowRef.current = null;
-        const res = resolveRoundRef.current(pending.wager, pending.grossPayout);
+        const res = resolveRoundRef.current(pending.wager, pending.grossPayout, pending.meta);
         if (res.success) {
           recordCompletedKenoRound(pending.historyEntry);
         }
@@ -157,10 +158,11 @@ export const KenoGame: React.FC<GameProps> = ({
 
     settledRoundIdsRef.current.add(current.roundId);
     const pendingEntry = pendingEscrowRef.current?.historyEntry;
+    const pendingMeta = pendingEscrowRef.current?.meta;
     pendingEscrowRef.current = null;
 
-    const { wager, grossPayout, isWin } = current.evaluation;
-    const roundRes = resolveRoundRef.current(wager, grossPayout);
+    const { wager, grossPayout } = current.evaluation;
+    const roundRes = resolveRoundRef.current(wager, grossPayout, pendingMeta);
 
     const fallbackEntry: KenoHistoryEntry = {
       roundId: current.roundId,
@@ -185,12 +187,8 @@ export const KenoGame: React.FC<GameProps> = ({
     setLastRoundResult(roundRes);
     actionLockRef.current = false;
 
-    if (isWin) {
-      soundManager.playBonusClaim();
-    } else if (grossPayout > 0) {
-      soundManager.playCoin();
-    } else {
-      soundManager.playClick();
+    if (roundRes.success) {
+      playWinSound(wager > 0 ? grossPayout / wager : 0, wager);
     }
   }, [stopDrawTimer]);
 
@@ -282,8 +280,13 @@ export const KenoGame: React.FC<GameProps> = ({
     setErrorMsg(null);
     setLastRoundResult(null);
 
-    const pendingMeta = {
+    const pendingMeta: PendingRoundMeta = {
       roundId: prepared.state.roundId,
+      detail: `Keno ${evalRes.spotCount} spots, ${evalRes.hits} hits`,
+      facts: {
+        kenoSpots: evalRes.spotCount,
+        kenoHits: evalRes.hits,
+      },
       kenoResult: prepared.historyEntry,
     };
 
@@ -301,6 +304,7 @@ export const KenoGame: React.FC<GameProps> = ({
       wager: evalRes.wager,
       grossPayout: evalRes.grossPayout,
       historyEntry: prepared.historyEntry,
+      meta: pendingMeta,
     };
     updatePendingRoundRef.current?.(evalRes.wager, evalRes.grossPayout, pendingMeta);
 
@@ -322,6 +326,7 @@ export const KenoGame: React.FC<GameProps> = ({
     setGameState(prepared.state);
 
     const selectedLookup = new Set(evalRes.selectedNumbers);
+    let hitsSoFar = 0;
 
     drawTimerRef.current = window.setInterval(() => {
       const curr = latestStateRef.current;
@@ -340,10 +345,10 @@ export const KenoGame: React.FC<GameProps> = ({
       latestStateRef.current = nextState;
       setGameState(nextState);
 
+      soundManager.playTick();
       if (selectedLookup.has(nextBall)) {
-        soundManager.playCoin();
-      } else {
-        soundManager.playClick();
+        hitsSoFar += 1;
+        soundManager.playKenoHit(hitsSoFar);
       }
 
       if (nextState.revealedCount >= KENO_DRAW_COUNT) {
@@ -548,11 +553,11 @@ export const KenoGame: React.FC<GameProps> = ({
             </div>
 
             <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <p className="text-xs text-slate-400">
-                {gameState.selectedNumbers.length === 0
+              <p className={`text-xs ${balance < minBet ? 'text-amber-400 font-medium' : 'text-slate-400'}`}>
+                {balance < minBet
+                  ? `You need at least ${minBet} credits to play`
+                  : gameState.selectedNumbers.length === 0
                   ? 'Pick at least 1 number or tap Quick Pick to activate your ticket.'
-                  : balance < minBet
-                  ? `Insufficient credits (minimum wager ${minBet} Cr).`
                   : `Playing ${gameState.selectedNumbers.length} ${
                       gameState.selectedNumbers.length === 1 ? 'spot' : 'spots'
                     } for ${gameState.wager.toLocaleString()} Cr`}
@@ -560,7 +565,7 @@ export const KenoGame: React.FC<GameProps> = ({
 
               <button
                 type="button"
-                disabled={isDrawing || !roundValidation.valid}
+                disabled={isDrawing || balance < minBet || !roundValidation.valid}
                 onClick={handlePlayKeno}
                 className="touch-manipulation px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-500 text-slate-950 font-bold text-sm tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 disabled:shadow-none active:scale-[0.98] transition-all min-h-[48px] cursor-pointer disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >

@@ -88,7 +88,14 @@ describe('SlotMachine Component', () => {
     // Exactly one resolution must happen, using the latest resolveRound function
     expect(initialProps.resolveRound).not.toHaveBeenCalled();
     expect(newResolveRound).toHaveBeenCalledTimes(1);
-    expect(newResolveRound).toHaveBeenCalledWith(50, expect.any(Number));
+    expect(newResolveRound).toHaveBeenCalledWith(
+      50,
+      expect.any(Number),
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: expect.any(String),
+      })
+    );
 
     // The Spin button is re-enabled with normal label
     const finishedButton = screen.getByRole('button', { name: /spin · 50 credits/i }) as HTMLButtonElement;
@@ -121,7 +128,14 @@ describe('SlotMachine Component', () => {
 
     // Must resolve immediately upon unmount with decided payout
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
-    expect(props.resolveRound).toHaveBeenCalledWith(50, expect.any(Number));
+    expect(props.resolveRound).toHaveBeenCalledWith(
+      50,
+      expect.any(Number),
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: expect.any(String),
+      })
+    );
 
     // All intervals and timeouts must be cancelled
     expect(vi.getTimerCount()).toBe(0);

@@ -93,7 +93,13 @@ describe('BlackjackGame Component', () => {
     fireEvent.click(dealBtn); // Rapid double tap ignored
 
     expect(initialProps.placeBet).toHaveBeenCalledTimes(1);
-    expect(initialProps.placeBet).toHaveBeenCalledWith(50, 100);
+    expect(initialProps.placeBet).toHaveBeenCalledWith(
+      50,
+      100,
+      expect.objectContaining({
+        roundId: expect.any(String),
+      })
+    );
 
     // Mid-deal re-render with new resolveRound reference
     const updatedResolveRound = vi.fn((bet: number, payout: number): RoundResult => ({
@@ -129,7 +135,14 @@ describe('BlackjackGame Component', () => {
 
     expect(initialProps.resolveRound).not.toHaveBeenCalled();
     expect(updatedResolveRound).toHaveBeenCalledTimes(1);
-    expect(updatedResolveRound).toHaveBeenCalledWith(50, 100);
+    expect(updatedResolveRound).toHaveBeenCalledWith(
+      50,
+      100,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: expect.any(String),
+      })
+    );
 
     expect(screen.getByText(/Won \+50 Credits/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /new hand · 50 credits/i })).toBeTruthy();
@@ -156,7 +169,13 @@ describe('BlackjackGame Component', () => {
     unmount();
 
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
-    expect(props.resolveRound).toHaveBeenCalledWith(50, 0);
+    expect(props.resolveRound).toHaveBeenCalledWith(
+      50,
+      0,
+      expect.objectContaining({
+        roundId: expect.any(String),
+      })
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -183,10 +202,33 @@ describe('BlackjackGame Component', () => {
 
     fireEvent.click(doubleBtn);
     expect(props.placeBet).toHaveBeenCalledTimes(2);
-    expect(props.placeBet).toHaveBeenNthCalledWith(2, 50, 200);
-    expect(props.updatePendingRound).toHaveBeenLastCalledWith(100, 200);
+    expect(props.placeBet).toHaveBeenNthCalledWith(
+      2,
+      50,
+      200,
+      expect.objectContaining({
+        roundId: expect.any(String),
+      })
+    );
+    expect(props.updatePendingRound).toHaveBeenLastCalledWith(
+      100,
+      200,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: expect.stringContaining('2×'),
+        facts: expect.objectContaining({ blackjackDoubledWin: true }),
+      })
+    );
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
-    expect(props.resolveRound).toHaveBeenCalledWith(100, 200);
+    expect(props.resolveRound).toHaveBeenCalledWith(
+      100,
+      200,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: expect.stringContaining('2×'),
+        facts: expect.objectContaining({ blackjackDoubledWin: true }),
+      })
+    );
     expect(screen.getByText(/Won \+100 Credits/i)).toBeTruthy();
   });
 

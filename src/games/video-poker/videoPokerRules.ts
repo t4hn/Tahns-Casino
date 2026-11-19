@@ -20,6 +20,12 @@ export interface PaytableEntry {
 }
 
 /**
+ * 9/6 Jacks or Better at 1-coin wager pays 250x for a Royal Flush (instead of the
+ * 800x 5-coin max-bet bonus), giving a theoretical return of ~98.4% with optimal play.
+ */
+export const VIDEO_POKER_RTP_LABEL = 'Up to ~98.4% with optimal play';
+
+/**
  * Standard 9/6 Jacks or Better paytable (winnings relative to wager).
  * Sorted from highest payout to lowest.
  */

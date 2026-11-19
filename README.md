@@ -13,7 +13,7 @@ Tahn's Casino is designed as a cohesive, mobile-friendly virtual gaming salon bu
 - Create a patron identity with a customizable display name and avatar.
 - Start with **1,000 complimentary virtual credits** and progress across **6 VIP membership tiers**.
 - Launch any open casino game from the floor catalog using a single shared bankroll, unified XP engine, and crash-safe escrow settlement system.
-- Track lifetime statistics, recent activity, honors/achievements, and persistent European Roulette and Keno history.
+- Track lifetime statistics, per-game breakdowns, a persistent 50-round Casino Record ledger, 25 patron honors/achievements, recent floor activity, and persistent European Roulette and Keno history.
 
 ---
 
@@ -23,8 +23,8 @@ All games currently implemented and registered as open playable modules (`Table 
 
 | Game | ID | Category | RTP / Payout Rate | Table Limits (Credits) | Volatility | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Blackjack** | `blackjack` | Cards | `99.5%` | `25 – 1,000` | Low | Table Open |
-| **Video Poker Deluxe** | `video-poker` | Cards | `99.2%` | `20 – 1,000` | Medium | Table Open |
+| **Blackjack** | `blackjack` | Cards | `~99.5%` | `25 – 1,000` | Low | Table Open |
+| **Video Poker Deluxe** | `video-poker` | Cards | `Up to ~98.4% with optimal play` | `20 – 1,000` | Medium | Table Open |
 | **Roulette (European)** | `roulette` | Table | `97.3%` | `10 – 1,500` | Medium | Table Open |
 | **Keno** | `keno` | Table | `94.0%` (avg `1–10` spots) | `10 – 1,000` | High | Table Open |
 | **Dice** | `dice` | Dice | `83.3% – 97.2%` | `10 – 800` | Medium | Table Open |
@@ -50,10 +50,11 @@ All features listed below are verified in the application source code (`src/econ
   5. **Level 5**: Black Tier Elite (`3,500 – 5,200 XP`, `+2,500 Cr`)
   6. **Level 6**: Casino Royalty (`5,200 – 7,500 XP`, `+3,000 Cr`)
 - **Daily Rewards & Login Streaks (`src/components/DailyBonusModal.tsx`, `wallet.ts`)**: Claims **+1,000 Credits** and **+200 XP** once every 24 hours with a live countdown and consecutive daily streak tracking (preserved within a 36-hour claim window).
-- **Achievement System (`src/data/initialData.ts`, `src/views/AchievementsView.tsx`)**: Six tracked milestones (*First Steps*, *Place Your Bet*, *Dedicated Patron*, *Rising Star*, *Floor Explorer*, and *High Roller*) with filter tabs (`all` / `unlocked` / `locked`) and claimable credit and XP rewards.
-- **Career & Game Statistics**: Tracks `gamesPlayed`, `totalWinnings` (sum of positive nets), `totalLosses` (sum of negative nets), an interactive 20-item recent activity feed on the Home Lounge, persistent 15-spin history in European Roulette, and persistent 15-round history and session stats in Keno.
-- **Persistent Player Data & Crash Recovery (`src/context/CasinoContext.tsx`)**: Persists patron profile, achievements, activities, settings, visited games, pending escrow rounds, European Roulette history, and Keno history/stats to `localStorage` under the `tahns_casino_v2_*` key namespace. Interrupted rounds in flight are automatically recovered on startup without double-crediting.
-- **Responsive Mobile Interface & Audio/Visual Controls (`src/components/Navigation.tsx`, `src/utils/sound.ts`)**: Persistent global header (brand home link, live wallet balance, daily bonus trigger), desktop navigation bar, mobile slide-out hamburger drawer, and fixed mobile bottom tab bar (`Home`, `Games`, `Profile` with live level badge, `Achievements`) provide seamless navigation across views and back to the Casino Floor from any active game without redundant in-game back bars. Includes synthesized Web Audio API sound effects, animation toggle (`settings.animations`), compact view, and currency formatting options.
+- **Achievement System (`src/data/initialData.ts`, `src/economy/achievements.ts`, `src/views/AchievementsView.tsx`)**: **25 tracked achievements** spanning core milestones (*First Steps*, *Place Your Bet*, *Dedicated Patron*, *Rising Star*, *Floor Explorer*, *High Roller*), per-game honors for **Blackjack** (*Natural Talent*, *Double Trouble*, *Card Shark*), **Video Poker Deluxe** (*Pair Up*, *Full House Party*, *Royal Treatment*), **European Roulette** (*Lucky Number*, *Colour Blind*, *Wheel Regular*), **80-Ball Keno** (*Close Call*, *Perfect Picks*, *Ball Watcher*), and **Slots** (*Reel Deal*, *Space Cadet*, *Big Winner*), plus career milestones (*Hot Streak*, *Well Rounded*, *Century*, *Regular*) with filter tabs (`all` / `unlocked` / `locked`), safe old-save migration, and claimable credit/XP rewards.
+- **Casino Record & Career Statistics (`src/economy/stats.ts`, `src/components/CasinoRecordSection.tsx`)**: Pure immutable stats and 50-round ring buffer ledger (`tahns_casino_v2_stats`, `tahns_casino_v2_history`) integrated into the **Player Profile** view. Displays overall summary tiles (Rounds Played, Win Rate, Total Wagered, Net Result, Biggest Win, Best Win Streak), expandable per-game breakdowns across all 7 playable games, a paginated 50-round Recent Rounds history (20 shown initially with `"Show more"`), recovered-round badges, and a neutral randomness footnote. Also retains persistent 15-round histories in European Roulette and Keno.
+- **Out-of-Credits Guidance (`src/components/OutOfCreditsBanner.tsx`)**: Displays a calm informational banner on Home and Casino Floor when credits fall below the lowest table minimum (pointing to Daily Bonus availability or live cooldown countdown) alongside consistent `"You need at least {minBet} credits to play"` guards across every playable game table.
+- **Persistent Player Data & Crash Recovery (`src/context/CasinoContext.tsx`)**: Persists patron profile, achievements, activities, settings, cumulative stats, 50-round history, visited games, pending escrow rounds, European Roulette history, and Keno history/stats to `localStorage` under the `tahns_casino_v2_*` key namespace. Interrupted rounds in flight are automatically recovered on startup without double-crediting or duplicate stats entries.
+- **Responsive Mobile Interface & Synthesized Web Audio (`src/components/Navigation.tsx`, `src/utils/sound.ts`)**: Persistent global header (brand home link, live wallet balance, daily bonus trigger), desktop navigation bar, mobile slide-out hamburger drawer, and fixed mobile bottom tab bar (`Home`, `Games`, `Profile` with live level badge, `Achievements`) provide seamless navigation across views and back to the Casino Floor from any active game without redundant in-game back bars. Includes a pure Web Audio API sound synthesizer (`playCardDeal`, `playChipPlace`, `playReelStop`, `playTick`, `playKenoHit`, `playSmallWin`, `playBigWin`, `playJackpot`, `playCoinCascade`, `playPush`, `playLoss`, `playLevelUp`, `playLocked`, `playClick`) driven by `playWinSound(multiplier, bet)` thresholds (`< 1×` loss, `= 1×` push, `1–3×` small win, `3–15×` big win + 6 coins, `> 15×` jackpot + 12 coins), plus animation toggle (`settings.animations`), compact view, and currency formatting options.
 
 ---
 
@@ -61,12 +62,12 @@ All features listed below are verified in the application source code (`src/econ
 
 ### Blackjack (`src/games/blackjack/`)
 - Standard shuffled 52-card single deck using cryptographically secure shared RNG.
-- Player actions: **Hit**, **Stand**, **Double Down** (on initial 2-card hands when balance allows), and **Insurance** (when dealer's upcard is an Ace).
-- Dealer hits below 17 and stands on all 17s; natural Blackjack pays **3:2**, standard wins pay **1:1**, Insurance pays **2:1**.
+- Player actions: **Hit**, **Stand**, and **Double Down** (on initial 2-card hands when balance allows).
+- Dealer hits below 17 and stands on all 17s; natural Blackjack pays **3:2** (`Math.floor(wager * 2.5)`), standard wins pay **1:1**, ties push.
 
 ### Video Poker Deluxe (`src/games/video-poker/`)
-- Standard 52-card **9/6 Jacks or Better** 5-card draw rules.
-- Deal 5 cards, toggle **HOLD** on any combination of cards, draw replacements for unheld slots, and evaluate the final 5-card poker hand against the full paytable (up to **800:1** on Royal Flush when qualifying / **250:1** standard).
+- Standard 52-card **9/6 Jacks or Better** 5-card draw rules (`Up to ~98.4% with optimal play` at the single-bet **250×** Royal Flush payout).
+- Deal 5 cards, toggle **HOLD** on any combination of cards, draw replacements for unheld slots, and evaluate the final 5-card poker hand against the full paytable.
 
 ### European Roulette (`src/games/roulette/`)
 - **European Single-Zero Format**: Authentic 37-pocket wheel (`0` green, 18 red, 18 black) in standard European wheel order (`0, 32, 15, 19, 4, ...`).
@@ -117,9 +118,10 @@ Verified directly from `package.json`:
 │   │   ├── CasinoContext.tsx
 │   │   └── recovery.test.ts
 │   ├── data/                    # Starter profile, achievements, avatars & initial settings
-│   ├── economy/                 # Pure wallet & progression rules (zero React/DOM coupling)
-│   │   ├── wallet.ts
-│   │   └── wallet.test.ts
+│   ├── economy/                 # Pure wallet, progression, stats & achievement evaluators (zero React/DOM coupling)
+│   │   ├── achievements.ts
+│   │   ├── stats.ts
+│   │   └── wallet.ts
 │   ├── games/                   # Decoupled mini-game plug-in modules & registry
 │   │   ├── blackjack/           # Deck, Blackjack rules, state machine, card UI & tests
 │   │   ├── dice/                # Dice rules, UI component & unit/component tests
@@ -194,7 +196,7 @@ npm run preview
 4. **Pure Rules Separation**:
    - Deterministic game math, RNG wrappers, and state machines live in pure `.ts` modules (`*Rules.ts`, `*State.ts`) testable under Node without React/DOM dependencies.
 5. **Storage Conventions**:
-   - Client persistence uses `localStorage` keys prefixed with `tahns_casino_v2_` (`_profile`, `_achievements`, `_activities`, `_settings`, `_visited_games`, `_pending_round`, `_roulette_history`, `_keno_history`, `_keno_stats`), handled defensively with `try/catch` and schema sanitization.
+   - Client persistence uses `localStorage` keys prefixed with `tahns_casino_v2_` (`_profile`, `_achievements`, `_activities`, `_settings`, `_stats`, `_history`, `_visited_games`, `_pending_round`, `_roulette_history`, `_keno_history`, `_keno_stats`), handled defensively with `try/catch` and versioned schema sanitization.
 
 See [`src/games/README.md`](src/games/README.md) for detailed plug-in implementation guidelines.
 
@@ -210,9 +212,7 @@ The items below are **planned enhancements** and are **not yet implemented**:
 - **Additional Slot Machines**: New multi-line themes leveraging `registerSlotMachine`.
 
 ### Potential Future Features
-- Expanded per-game win/loss analytics and return tracking.
-- Additional patron honors and game-specific achievements.
-- Expanded cross-game session and bet ledger history.
+- Expanded patron honors and seasonal leaderboard challenges.
 - Additional casino table felt and chip customization options.
 
 ---

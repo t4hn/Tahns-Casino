@@ -4,8 +4,32 @@ import { GameFloorItem } from '../games/types';
 
 export type RoundResult = SettleResult;
 
+export type PokerCategory =
+  | 'royal_flush'
+  | 'straight_flush'
+  | 'four_of_a_kind'
+  | 'full_house'
+  | 'flush'
+  | 'straight'
+  | 'three_of_a_kind'
+  | 'two_pair'
+  | 'jacks_or_better'
+  | 'none';
+
+export interface RoundAchievementFacts {
+  blackjackNatural?: boolean;
+  blackjackDoubledWin?: boolean;
+  videoPokerCategory?: PokerCategory;
+  rouletteWonStraightUp?: boolean;
+  rouletteRedBlackWins?: number;
+  kenoSpots?: number;
+  kenoHits?: number;
+}
+
 export interface PendingRoundMeta {
   roundId?: string;
+  detail?: string;
+  facts?: RoundAchievementFacts;
   rouletteResult?: {
     roundId: string;
     number: number;
@@ -34,13 +58,13 @@ export interface GameProps {
   balance: number;
   minBet: number;
   maxBet: number;
-  settle: (bet: number, payout: number) => RoundResult;
+  settle: (bet: number, payout: number, meta?: PendingRoundMeta) => RoundResult;
   placeBet: (
     bet: number,
     payout?: number,
     meta?: PendingRoundMeta
   ) => { success: boolean; error?: string };
-  resolveRound: (bet: number, payout: number) => RoundResult;
+  resolveRound: (bet: number, payout: number, meta?: PendingRoundMeta) => RoundResult;
   updatePendingRound?: (bet: number, payout?: number, meta?: PendingRoundMeta) => void;
   animations: boolean;
 }

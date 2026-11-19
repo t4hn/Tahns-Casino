@@ -104,7 +104,15 @@ describe('VideoPokerGame Component', () => {
     fireEvent.click(dealBtn); // Rapid double tap ignored
 
     expect(props.placeBet).toHaveBeenCalledTimes(1);
-    expect(props.placeBet).toHaveBeenCalledWith(20, 40); // Dealt Jacks or Better stand-pat payout
+    expect(props.placeBet).toHaveBeenCalledWith(
+      20,
+      40,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: 'Jacks or Better',
+        facts: { videoPokerCategory: 'jacks_or_better' },
+      })
+    ); // Dealt Jacks or Better stand-pat payout
 
     // Select slot 0, slot 1, slot 2, then unselect slot 1
     const card0 = screen.getByTestId('poker-card-0');
@@ -125,9 +133,25 @@ describe('VideoPokerGame Component', () => {
     fireEvent.click(drawBtn);
     fireEvent.click(drawBtn); // Prevent duplicate draw
 
-    expect(props.updatePendingRound).toHaveBeenCalledWith(20, 40);
+    expect(props.updatePendingRound).toHaveBeenCalledWith(
+      20,
+      40,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: 'Jacks or Better',
+        facts: { videoPokerCategory: 'jacks_or_better' },
+      })
+    );
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
-    expect(props.resolveRound).toHaveBeenCalledWith(20, 40);
+    expect(props.resolveRound).toHaveBeenCalledWith(
+      20,
+      40,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: 'Jacks or Better',
+        facts: { videoPokerCategory: 'jacks_or_better' },
+      })
+    );
 
     // Held cards kept, unheld replaced
     expect(screen.getByTestId('poker-card-0').getAttribute('aria-label')).toContain('Jack of Spades');
@@ -163,7 +187,15 @@ describe('VideoPokerGame Component', () => {
 
     // Flush 6:1 on 100 bet -> +600 net, 700 total return
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
-    expect(props.resolveRound).toHaveBeenCalledWith(100, 700);
+    expect(props.resolveRound).toHaveBeenCalledWith(
+      100,
+      700,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: 'Flush',
+        facts: { videoPokerCategory: 'flush' },
+      })
+    );
     expect(screen.getByText(/Flush! Won \+600 Credits/i)).toBeTruthy();
   });
 
@@ -211,7 +243,15 @@ describe('VideoPokerGame Component', () => {
     expect(initialProps.resolveRound).not.toHaveBeenCalled();
     expect(newResolveRound).toHaveBeenCalledTimes(1);
     // Royal Flush 250:1 on 20 bet -> 251 * 20 = 5,020 total payout
-    expect(newResolveRound).toHaveBeenCalledWith(20, 5020);
+    expect(newResolveRound).toHaveBeenCalledWith(
+      20,
+      5020,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: 'Royal Flush',
+        facts: { videoPokerCategory: 'royal_flush' },
+      })
+    );
     expect(screen.getByText(/Royal Flush! Won \+5,000 Credits/i)).toBeTruthy();
   });
 
@@ -234,7 +274,15 @@ describe('VideoPokerGame Component', () => {
     unmount();
 
     expect(props.resolveRound).toHaveBeenCalledTimes(1);
-    expect(props.resolveRound).toHaveBeenCalledWith(20, 0);
+    expect(props.resolveRound).toHaveBeenCalledWith(
+      20,
+      0,
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: 'No Winning Hand',
+        facts: { videoPokerCategory: 'none' },
+      })
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 

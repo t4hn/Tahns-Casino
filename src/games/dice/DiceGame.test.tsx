@@ -85,7 +85,14 @@ describe('DiceGame Component', () => {
     // Exactly one call using the latest settle callback
     expect(initialProps.settle).not.toHaveBeenCalled();
     expect(newSettle).toHaveBeenCalledTimes(1);
-    expect(newSettle).toHaveBeenCalledWith(50, expect.any(Number));
+    expect(newSettle).toHaveBeenCalledWith(
+      50,
+      expect.any(Number),
+      expect.objectContaining({
+        roundId: expect.any(String),
+        detail: expect.any(String),
+      })
+    );
 
     // The Roll button is re-enabled
     const finishedButton = screen.getByRole('button', { name: /roll dice · low · 50 credits/i }) as HTMLButtonElement;

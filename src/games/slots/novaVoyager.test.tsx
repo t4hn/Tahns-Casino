@@ -273,7 +273,14 @@ describe('Nova Voyager Slot Machine', () => {
       // Start spin
       fireEvent.click(spinButton);
       expect(props.placeBet).toHaveBeenCalledTimes(1);
-      expect(props.placeBet).toHaveBeenCalledWith(50, expect.any(Number));
+      expect(props.placeBet).toHaveBeenCalledWith(
+        50,
+        expect.any(Number),
+        expect.objectContaining({
+          roundId: expect.any(String),
+          detail: expect.any(String),
+        })
+      );
 
       // 5 reels stop at 600, 800, 1000, 1200, 1400ms
       act(() => {
@@ -281,7 +288,14 @@ describe('Nova Voyager Slot Machine', () => {
       });
 
       expect(props.resolveRound).toHaveBeenCalledTimes(1);
-      expect(props.resolveRound).toHaveBeenCalledWith(50, expect.any(Number));
+      expect(props.resolveRound).toHaveBeenCalledWith(
+        50,
+        expect.any(Number),
+        expect.objectContaining({
+          roundId: expect.any(String),
+          detail: expect.any(String),
+        })
+      );
 
       // Spin button is re-enabled
       const finishedButton = screen.getByRole('button', { name: /spin · 50 credits/i }) as HTMLButtonElement;

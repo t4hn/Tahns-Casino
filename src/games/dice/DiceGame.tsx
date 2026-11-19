@@ -9,7 +9,7 @@ import {
   RollResolution,
 } from './diceRules';
 import { rollDie } from './rng';
-import { soundManager } from '../../utils/sound';
+import { soundManager, playWinSound } from '../../utils/sound';
 import {
   Dices,
   Sparkles,
@@ -169,18 +169,24 @@ export const DiceGame: React.FC<GameProps> = ({
     const finalD2 = rollDie();
     const resolution = resolveRoll(selectedBetType, finalD1, finalD2, wager);
 
+    const roundId = `dice_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const chosenOption = BET_OPTIONS.find((b) => b.type === selectedBetType);
+    const roundMeta = {
+      roundId,
+      detail: `${chosenOption?.label || selectedBetType} · Roll ${finalD1 + finalD2} (${finalD1}+${finalD2})`,
+    };
+
     // 5. Check if animations are enabled
     const useAnimation = animations !== false;
 
     if (!useAnimation) {
       // Instant settlement
       setDice([finalD1, finalD2]);
-      const roundRes = settleRef.current(wager, resolution.payout);
+      const roundRes = settleRef.current(wager, resolution.payout, roundMeta);
 
-      if (resolution.isWin) {
-        soundManager.playCoin();
-      } else {
-        soundManager.playClick();
+      if (roundRes.success) {
+        const mult = wager > 0 ? resolution.payout / wager : 0;
+        playWinSound(mult, wager);
       }
 
       setLastResult({
@@ -212,12 +218,11 @@ export const DiceGame: React.FC<GameProps> = ({
 
       // Settle atomically once animation concludes
       setDice([finalD1, finalD2]);
-      const roundRes = settleRef.current(wager, resolution.payout);
+      const roundRes = settleRef.current(wager, resolution.payout, roundMeta);
 
-      if (resolution.isWin) {
-        soundManager.playCoin();
-      } else {
-        soundManager.playClick();
+      if (roundRes.success) {
+        const mult = wager > 0 ? resolution.payout / wager : 0;
+        playWinSound(mult, wager);
       }
 
       setLastResult({

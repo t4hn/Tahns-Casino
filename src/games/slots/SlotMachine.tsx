@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { GameProps, RoundResult } from '../../types/casino';
+import { GameProps, PendingRoundMeta, RoundResult } from '../../types/casino';
 import {
   SlotsConfig,
   getStopsPerReel,
@@ -14,7 +14,7 @@ import {
 import { SlotSymbolIcon } from './symbols/SlotSymbolIcon';
 import { randomInt } from '../shared/rng';
 import { isValidBet } from '../shared/betValidation';
-import { soundManager } from '../../utils/sound';
+import { soundManager, playWinSound } from '../../utils/sound';
 import {
   Sparkles,
   ChevronDown,
@@ -125,6 +125,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     wager: number;
     payout: number;
     spinEval: SpinEvaluation;
+    meta: PendingRoundMeta;
   } | null>(null);
   const intervalsRef = useRef<number[]>([]);
   const timeoutsRef = useRef<number[]>([]);
@@ -143,9 +144,9 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
 
       // If the component unmounts mid-spin, resolve immediately with the already-decided payout
       if (pendingResolutionRef.current) {
-        const { wager: pendingWager, payout: pendingPayout } = pendingResolutionRef.current;
+        const { wager: pendingWager, payout: pendingPayout, meta } = pendingResolutionRef.current;
         pendingResolutionRef.current = null;
-        resolveRoundRef.current(pendingWager, pendingPayout);
+        resolveRoundRef.current(pendingWager, pendingPayout, meta);
       }
     };
   }, []);
@@ -234,9 +235,23 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
     // 3. Compute full outcome BEFORE any animation (no engineered near-misses)
     const nextStops: number[] = stopsLengths.map((len) => randomInt(len));
     const spinEval = evaluateSpin(nextStops, wager, config);
+    const roundId = `slot_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const winningLinesInSpin = spinEval.lines.filter((l) => l.won || (l.multiplier && l.multiplier > 0));
+    const topMult = winningLinesInSpin.reduce((max, l) => Math.max(max, l.multiplier || 0), 0);
+    const slotDetail = !isMultiLine
+      ? winningLinesInSpin[0]?.matchDescription || 'No match'
+      : winningLinesInSpin.length === 0
+      ? 'No match'
+      : winningLinesInSpin.length === 1
+      ? winningLinesInSpin[0].matchDescription
+      : `${winningLinesInSpin.length} winning lines (${topMult}× top)`;
+    const roundMeta: PendingRoundMeta = {
+      roundId,
+      detail: slotDetail,
+    };
 
     // 4. Atomically deduct wager into escrow and persist pending round with decided payout
-    const betResult = placeBetRef.current(wager, spinEval.payout);
+    const betResult = placeBetRef.current(wager, spinEval.payout, roundMeta);
     if (!betResult.success) {
       soundManager.playLocked();
       setErrorMsg(betResult.error || 'Failed to place wager.');
@@ -256,6 +271,7 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
       wager,
       payout: spinEval.payout,
       spinEval,
+      meta: roundMeta,
     };
 
     // 6. Check if animations are enabled
@@ -267,14 +283,12 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
       setReelSpinning(new Array(numReels).fill(false));
 
       pendingResolutionRef.current = null;
-      const roundRes: RoundResult = resolveRoundRef.current(wager, spinEval.payout);
+      const roundRes: RoundResult = resolveRoundRef.current(wager, spinEval.payout, roundMeta);
 
       if (!roundRes.success) {
         setErrorMsg(roundRes.error || 'Failed to resolve spin round.');
       } else {
-        if (spinEval.won) {
-          soundManager.playCoin();
-        }
+        playWinSound(wager > 0 ? spinEval.payout / wager : 0, wager);
         setLastResult(spinEval);
       }
 
@@ -326,22 +340,27 @@ export const SlotMachine: React.FC<SlotMachineProps> = ({
           return updated;
         });
 
-        // Click / tick sound on reel lock
-        soundManager.playClick();
+        // Mechanical reel stop thunk on lock
+        soundManager.playReelStop(reelIdx);
 
         // When the final reel stops, resolve round exactly once
         if (reelIdx === numReels - 1) {
           const pending = pendingResolutionRef.current;
           if (pending) {
             pendingResolutionRef.current = null;
-            const roundRes: RoundResult = resolveRoundRef.current(pending.wager, pending.payout);
+            const roundRes: RoundResult = resolveRoundRef.current(
+              pending.wager,
+              pending.payout,
+              pending.meta
+            );
 
             if (!roundRes.success) {
               setErrorMsg(roundRes.error || 'Failed to resolve spin round.');
             } else {
-              if (pending.spinEval.won) {
-                soundManager.playCoin();
-              }
+              playWinSound(
+                pending.wager > 0 ? pending.payout / pending.wager : 0,
+                pending.wager
+              );
               setLastResult(pending.spinEval);
             }
           }

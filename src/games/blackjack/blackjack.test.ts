@@ -185,10 +185,10 @@ describe('Blackjack Rules: Dealer Play & Hand Resolution', () => {
     expect(result.remainingDeck).toHaveLength(1);
   });
 
-  it('calculates exact payouts: 3:2 natural Blackjack, 1:1 win, 1x push, 0 loss', () => {
+  it('calculates exact payouts: 3:2 natural Blackjack (rounded down), 1:1 win, 1x push, 0 loss', () => {
     expect(calculatePayout('player_blackjack', 100)).toBe(250);
     expect(calculatePayout('player_blackjack', 50)).toBe(125);
-    expect(calculatePayout('player_blackjack', 25)).toBe(63); // Math.round(62.5)
+    expect(calculatePayout('player_blackjack', 25)).toBe(62); // Math.floor(62.5)
     expect(calculatePayout('player_win', 100)).toBe(200);
     expect(calculatePayout('dealer_bust', 100)).toBe(200);
     expect(calculatePayout('push', 100)).toBe(100);
@@ -197,7 +197,7 @@ describe('Blackjack Rules: Dealer Play & Hand Resolution', () => {
     expect(calculatePayout('dealer_blackjack', 100)).toBe(0);
   });
 
-  it('natural Blackjack beats dealer non-natural 21 and pays 3:2', () => {
+  it('natural Blackjack beats dealer non-natural 21 and pays 3:2 (including rounded-down 25 bet)', () => {
     const player = [c('A', 'spades'), c('J', 'hearts')];
     const dealerNonNatural21 = [c('7', 'spades'), c('7', 'hearts'), c('7', 'diamonds')];
     const res = resolveBlackjackHand(player, dealerNonNatural21, 100);
@@ -205,6 +205,12 @@ describe('Blackjack Rules: Dealer Play & Hand Resolution', () => {
     expect(res.won).toBe(true);
     expect(res.payout).toBe(250);
     expect(res.net).toBe(150);
+
+    const res25 = resolveBlackjackHand(player, dealerNonNatural21, 25);
+    expect(res25.outcome).toBe('player_blackjack');
+    expect(res25.won).toBe(true);
+    expect(res25.payout).toBe(62);
+    expect(res25.net).toBe(37);
   });
 
   it('both natural Blackjacks result in a Push', () => {

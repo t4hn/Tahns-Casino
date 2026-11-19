@@ -127,11 +127,11 @@ export const GameCard: React.FC<GameCardProps> = ({ game, featured = false }) =>
       {/* Card Content */}
       <div className="flex flex-col justify-between flex-1 p-4">
         <div>
-          <div className="flex items-baseline justify-between gap-2">
-            <h4 className="text-base font-semibold text-slate-100 group-hover:text-emerald-400 transition-colors truncate">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+            <h4 className="text-base font-semibold text-slate-100 group-hover:text-emerald-400 transition-colors">
               {game.name}
             </h4>
-            <span className="font-mono text-[11px] text-slate-400 shrink-0 tabular-nums">
+            <span className="font-mono text-[11px] text-slate-400 tabular-nums">
               RTP {game.payoutRate}
             </span>
           </div>
