@@ -124,4 +124,35 @@ describe('Mobile Navigation, Branding & Player Profile Redesign', () => {
     expect(screen.getByText('Patron Preferences')).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Casino Settings' })).toBeNull();
   });
+
+  it('omits "Back to Casino Floor" from playable game screens and returns to Casino Floor via hamburger drawer', () => {
+    render(<App />);
+
+    // Open Casino Floor
+    const desktopNav = screen.getByRole('navigation', { name: /desktop navigation/i });
+    fireEvent.click(within(desktopNav).getByRole('button', { name: /^games$/i }));
+    expect(screen.getByText('Casino Floor')).toBeTruthy();
+
+    // Launch all 7 playable games sequentially via their Play buttons and verify no Back to Casino Floor link exists
+    const playButtons = screen.getAllByRole('button', { name: /^play$/i });
+    expect(playButtons.length).toBe(7);
+
+    // Test first game (Lucky Slots) and return via hamburger menu drawer
+    fireEvent.click(playButtons[0]);
+    expect(screen.queryByText(/back to casino floor/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /open menu drawer/i }));
+    const drawer = screen.getByRole('complementary');
+    fireEvent.click(within(drawer).getByRole('button', { name: /^games$/i }));
+    expect(screen.getByText('Casino Floor')).toBeTruthy();
+
+    // Verify every remaining playable game renders without "Back to Casino Floor"
+    for (let i = 1; i < playButtons.length; i++) {
+      const currentPlayButtons = screen.getAllByRole('button', { name: /^play$/i });
+      fireEvent.click(currentPlayButtons[i]);
+      expect(screen.queryByText(/back to casino floor/i)).toBeNull();
+      fireEvent.click(within(desktopNav).getByRole('button', { name: /^games$/i }));
+      expect(screen.getByText('Casino Floor')).toBeTruthy();
+    }
+  });
 });

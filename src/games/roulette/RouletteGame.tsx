@@ -19,6 +19,7 @@ import {
 } from './rouletteRules';
 import {
   RouletteGameState,
+  SpinHistoryEntry,
   claimRouletteSettlement,
   clearTableBets,
   createInitialRouletteState,
@@ -28,6 +29,10 @@ import {
   startNewRouletteRound,
   startRouletteSpin,
 } from './rouletteState';
+import {
+  appendRouletteHistoryEntry,
+  loadRouletteHistory,
+} from './rouletteHistoryStorage';
 import { RouletteWheel } from './RouletteWheel';
 import { RouletteTable } from './RouletteTable';
 import { soundManager } from '../../utils/sound';
@@ -60,7 +65,7 @@ export const RouletteGame: React.FC<GameProps> = ({
 }) => {
   const [selectedChip, setSelectedChip] = useState<number>(25);
   const [gameState, setGameState] = useState<RouletteGameState>(() =>
-    createInitialRouletteState()
+    createInitialRouletteState(loadRouletteHistory())
   );
   const [removeMode, setRemoveMode] = useState<boolean>(false);
   const [isRulesOpen, setIsRulesOpen] = useState<boolean>(false);
@@ -73,6 +78,7 @@ export const RouletteGame: React.FC<GameProps> = ({
     roundId: string;
     bet: number;
     payout: number;
+    historyEntry: SpinHistoryEntry;
   } | null>(null);
   const settledRoundIdsRef = useRef<Set<string>>(new Set());
   const latestGameStateRef = useRef<RouletteGameState>(gameState);
@@ -85,14 +91,17 @@ export const RouletteGame: React.FC<GameProps> = ({
   const updatePendingRoundRef = useRef(updatePendingRound);
   updatePendingRoundRef.current = updatePendingRound;
 
-  // Unmount-only cleanup: settle any active in-flight spin once if patron leaves mid-spin
+  // Unmount-only cleanup: settle any active in-flight spin once and persist its settled history entry without duplication
   useEffect(() => {
     return () => {
       const pending = pendingEscrowRef.current;
       if (pending && !settledRoundIdsRef.current.has(pending.roundId)) {
         settledRoundIdsRef.current.add(pending.roundId);
         pendingEscrowRef.current = null;
-        resolveRoundRef.current(pending.bet, pending.payout);
+        const settled = resolveRoundRef.current(pending.bet, pending.payout);
+        if (settled.success) {
+          appendRouletteHistoryEntry(pending.historyEntry);
+        }
       }
     };
   }, []);
@@ -184,15 +193,30 @@ export const RouletteGame: React.FC<GameProps> = ({
       return;
     }
 
-    const total = prepared.state.evaluation.totalWager;
-    const expectedPayout = prepared.state.evaluation.totalGrossPayout;
+    const evaluationResult = prepared.state.evaluation;
+    const total = evaluationResult.totalWager;
+    const expectedPayout = evaluationResult.totalGrossPayout;
+    const pendingHistoryEntry: SpinHistoryEntry = {
+      roundId: prepared.state.roundId,
+      number: evaluationResult.winningNumber,
+      color: evaluationResult.winningColor,
+      timestamp: Date.now(),
+      totalWager: evaluationResult.totalWager,
+      grossPayout: evaluationResult.totalGrossPayout,
+      net: evaluationResult.net,
+    };
 
     actionLockRef.current = true;
     setRemoveMode(false);
     setErrorMsg(null);
     setLastRoundResult(null);
 
-    const betResult = placeBetRef.current(total, expectedPayout);
+    const pendingMeta = {
+      roundId: prepared.state.roundId,
+      rouletteResult: pendingHistoryEntry,
+    };
+
+    const betResult = placeBetRef.current(total, expectedPayout, pendingMeta);
     if (!betResult.success) {
       soundManager.playLocked();
       actionLockRef.current = false;
@@ -204,8 +228,9 @@ export const RouletteGame: React.FC<GameProps> = ({
       roundId: prepared.state.roundId,
       bet: total,
       payout: expectedPayout,
+      historyEntry: pendingHistoryEntry,
     };
-    updatePendingRoundRef.current?.(total, expectedPayout);
+    updatePendingRoundRef.current?.(total, expectedPayout, pendingMeta);
 
     soundManager.playClick();
     setGameState(prepared.state);
@@ -220,19 +245,44 @@ export const RouletteGame: React.FC<GameProps> = ({
     if (!claim.claimed) return;
 
     settledRoundIdsRef.current.add(current.roundId);
+    const pendingEntry = pendingEscrowRef.current?.historyEntry;
     pendingEscrowRef.current = null;
 
     const { totalWager: roundBet, totalGrossPayout, net } = current.evaluation;
     const settledRes = resolveRoundRef.current(roundBet, totalGrossPayout);
 
-    setGameState(claim.state);
-    setLastRoundResult(settledRes);
-    actionLockRef.current = false;
-
     if (!settledRes.success) {
+      setGameState((prev) => ({
+        ...claim.state,
+        history: prev.history,
+      }));
+      setLastRoundResult(settledRes);
+      actionLockRef.current = false;
       setErrorMsg(settledRes.error || 'Failed to settle roulette spin.');
       return;
     }
+
+    // Record settled result cleanly once into persistent history (deduplicated by roundId)
+    const entryToPersist: SpinHistoryEntry = pendingEntry
+      ? { ...pendingEntry, timestamp: Date.now() }
+      : {
+          roundId: current.roundId,
+          number: current.evaluation.winningNumber,
+          color: current.evaluation.winningColor,
+          timestamp: Date.now(),
+          totalWager: roundBet,
+          grossPayout: totalGrossPayout,
+          net,
+        };
+
+    const persistedHistory = appendRouletteHistoryEntry(entryToPersist);
+
+    setGameState({
+      ...claim.state,
+      history: persistedHistory,
+    });
+    setLastRoundResult(settledRes);
+    actionLockRef.current = false;
 
     if (totalGrossPayout > 0 && net >= 0) {
       soundManager.playCoin();
@@ -282,41 +332,68 @@ export const RouletteGame: React.FC<GameProps> = ({
         </div>
       </div>
 
-      {/* ── Recent Winning Numbers Marquee ── */}
-      {gameState.history.length > 0 && (
-        <div
-          aria-label="Recent winning numbers"
-          className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none"
-        >
-          <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 shrink-0">
-            Recent:
+      {/* ── Persistent Recent Results Display (15 Circular Indicators, Informational Only) ── */}
+      <div
+        data-testid="roulette-history-strip"
+        aria-label="Recent winning numbers"
+        className="rounded-xl bg-[#0c1118]/90 border border-slate-800/80 px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+      >
+        <div className="flex items-center justify-between sm:justify-start gap-2.5 shrink-0">
+          <span className="text-[11px] font-mono uppercase tracking-wider text-slate-400">
+            Recent Results
           </span>
-          <div className="flex items-center gap-1.5">
-            {gameState.history.slice(0, 12).map((entry, idx) => (
-              <span
-                key={entry.roundId}
-                title={`Spin #${idx + 1}: ${entry.number} (${entry.color})`}
-                className={`inline-flex h-7 min-w-[28px] px-1.5 items-center justify-center rounded-md text-xs font-mono font-bold border ${
-                  idx === 0 ? 'ring-1 ring-amber-400/70' : 'opacity-85'
-                } ${
-                  entry.color === 'green'
-                    ? 'bg-emerald-700 border-emerald-400 text-white'
-                    : entry.color === 'red'
-                    ? 'bg-red-800 border-red-500/70 text-white'
-                    : 'bg-slate-900 border-slate-700 text-slate-200'
-                }`}
-              >
-                {entry.number}
-              </span>
-            ))}
-          </div>
+          {gameState.history.length > 0 && (
+            <span className="text-[10px] font-mono text-slate-500">
+              Independent spins · Last {gameState.history.length}
+            </span>
+          )}
         </div>
-      )}
+
+        {gameState.history.length > 0 ? (
+          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 scrollbar-none">
+            {gameState.history.slice(0, 15).map((entry, idx) => {
+              const colorLabel =
+                entry.color === 'green'
+                  ? 'green'
+                  : entry.color === 'red'
+                  ? 'red'
+                  : 'black';
+              const netFormatted =
+                entry.net > 0 ? `+${entry.net}` : String(entry.net);
+              return (
+                <div key={entry.roundId} className="relative shrink-0 flex items-center">
+                  <span
+                    aria-label={`${idx === 0 ? 'Latest result: ' : ''}${entry.number} ${colorLabel}, wager ${entry.totalWager} Cr, payout ${entry.grossPayout} Cr`}
+                    title={`${idx === 0 ? 'Latest · ' : ''}${entry.number} (${colorLabel}) · Wager ${entry.totalWager.toLocaleString()} Cr · Payout ${entry.grossPayout.toLocaleString()} Cr · Net ${netFormatted} Cr`}
+                    className={`inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-xs font-mono font-bold border transition-transform ${
+                      idx === 0
+                        ? 'ring-2 ring-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.3)] scale-105'
+                        : 'opacity-85'
+                    } ${
+                      entry.color === 'green'
+                        ? 'bg-emerald-600 border-emerald-300 text-white'
+                        : entry.color === 'red'
+                        ? 'bg-red-700 border-red-400/80 text-white'
+                        : 'bg-[#121822] border-slate-600/80 text-slate-100'
+                    }`}
+                  >
+                    {entry.number}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <span className="text-[11px] font-mono text-slate-500">
+            No settled spins yet · Each spin is independent
+          </span>
+        )}
+      </div>
 
       {/* ── Main Roulette Table & Wheel Grid ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-[310px_1fr] gap-5 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[310px_1fr] gap-4 sm:gap-5 items-start">
         {/* Left Column: European Wheel & Spin Result Summary */}
-        <div className="rounded-2xl bg-gradient-to-b from-[#121822] to-[#0c1118] border border-slate-800/90 p-4 sm:p-5 flex flex-col items-center gap-4 shadow-xl">
+        <div className="rounded-2xl bg-gradient-to-b from-[#121822] to-[#0c1118] border border-slate-800/90 p-3 sm:p-5 flex flex-col items-center gap-2.5 sm:gap-4 shadow-xl">
           <RouletteWheel
             winningNumber={evaluation ? evaluation.winningNumber : null}
             isSpinning={isSpinning}
@@ -503,7 +580,7 @@ export const RouletteGame: React.FC<GameProps> = ({
                       aria-label={`Select ${val} credit chip`}
                       aria-pressed={isSelected}
                       onClick={() => handleSelectChip(val)}
-                      className={`relative h-11 w-11 sm:h-12 sm:w-12 rounded-full bg-gradient-to-b border-2 border-dashed font-mono text-xs font-bold shadow-md transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 ${getChipButtonPalette(
+                      className={`touch-manipulation relative h-11 w-11 sm:h-12 sm:w-12 rounded-full bg-gradient-to-b border-2 border-dashed font-mono text-xs font-bold shadow-md transition-all flex items-center justify-center cursor-pointer disabled:opacity-40 ${getChipButtonPalette(
                         val
                       )} ${
                         isSelected

@@ -11,9 +11,13 @@ import { SlotMachine } from './slots/SlotMachine';
 import { BlackjackGame } from './blackjack/BlackjackGame';
 import { VideoPokerGame } from './video-poker/VideoPokerGame';
 import { RouletteGame } from './roulette/RouletteGame';
+import { KenoGame } from './keno/KenoGame';
+import { calculateKenoAverageRtp } from './keno/kenoRules';
+import kenoCardImage from '../assets/images/game_keno_salon_1795076551275.jpg';
 
 const DICE_RTP_RANGE = `${(calculateRtp('low') * 100).toFixed(1)}% - ${(calculateRtp('seven') * 100).toFixed(1)}%`;
 const SLOTS_RTP = `${(calculateSlotsRtp(DEFAULT_SLOTS_CONFIG) * 100).toFixed(1)}%`;
+const KENO_RTP = `${(calculateKenoAverageRtp() * 100).toFixed(1)}%`;
 
 export const DEFAULT_GAMES: CasinoGameMetadata[] = [
   {
@@ -82,6 +86,17 @@ export const DEFAULT_GAMES: CasinoGameMetadata[] = [
     maxBet: 1000,
     payoutRate: '99.2%',
     volatility: 'Medium',
+  },
+  {
+    id: 'keno',
+    name: 'Keno',
+    category: 'Table',
+    description: 'Classic 80-ball draw salon. Select 1 to 10 spots, use Quick Pick, and match 20 drawn balls for up to 25,000x payouts.',
+    imageUrl: kenoCardImage,
+    minBet: 10,
+    maxBet: 1000,
+    payoutRate: KENO_RTP,
+    volatility: 'High',
   },
 ];
 
@@ -203,6 +218,11 @@ registerGameModule({
 registerGameModule({
   id: 'roulette',
   component: RouletteGame,
+});
+
+registerGameModule({
+  id: 'keno',
+  component: KenoGame,
 });
 
 registerSlotMachine(

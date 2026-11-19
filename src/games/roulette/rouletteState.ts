@@ -19,6 +19,7 @@ export interface SpinHistoryEntry {
   roundId: string;
   number: number;
   color: 'green' | 'red' | 'black';
+  timestamp: number;
   totalWager: number;
   grossPayout: number;
   net: number;
@@ -40,14 +41,16 @@ function nextRoundId(): string {
   return `roulette_${Date.now()}_${roundCounter}`;
 }
 
-export function createInitialRouletteState(): RouletteGameState {
+export function createInitialRouletteState(
+  initialHistory: SpinHistoryEntry[] = []
+): RouletteGameState {
   return {
     phase: 'BETTING',
     roundId: nextRoundId(),
     bets: [],
     previousBets: [],
     evaluation: null,
-    history: [],
+    history: initialHistory.slice(0, 15),
     settled: false,
   };
 }
@@ -253,6 +256,7 @@ export function claimRouletteSettlement(
     roundId: state.roundId,
     number: state.evaluation.winningNumber,
     color: state.evaluation.winningColor,
+    timestamp: Date.now(),
     totalWager: state.evaluation.totalWager,
     grossPayout: state.evaluation.totalGrossPayout,
     net: state.evaluation.net,

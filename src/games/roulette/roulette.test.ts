@@ -20,7 +20,15 @@ import {
   startRouletteSpin,
   claimRouletteSettlement,
   startNewRouletteRound,
+  SpinHistoryEntry,
 } from './rouletteState';
+import {
+  ROULETTE_HISTORY_STORAGE_KEY,
+  appendRouletteHistoryEntry,
+  clearRouletteHistory,
+  loadRouletteHistory,
+  sanitizeRouletteHistory,
+} from './rouletteHistoryStorage';
 
 function makeBet(spotId: string, amount: number): PlacedRouletteBet {
   const spot = getRouletteSpot(spotId);
@@ -267,5 +275,77 @@ describe('European Roulette State Machine', () => {
     const repeated = repeatPreviousTableBets(state, 1500, 500);
     expect(repeated.repeated).toBe(true);
     expect(repeated.state.bets[0]).toMatchObject({ spotId: 'red', amount: 50 });
+  });
+});
+
+describe('Persistent Roulette History Storage', () => {
+  class MemoryStorage implements Storage {
+    private map = new Map<string, string>();
+    get length() {
+      return this.map.size;
+    }
+    clear() {
+      this.map.clear();
+    }
+    getItem(key: string) {
+      return this.map.has(key) ? this.map.get(key)! : null;
+    }
+    setItem(key: string, val: string) {
+      this.map.set(key, String(val));
+    }
+    removeItem(key: string) {
+      this.map.delete(key);
+    }
+    key(idx: number) {
+      return Array.from(this.map.keys())[idx] ?? null;
+    }
+  }
+
+  it('persists up to 15 settled entries, deduplicates identical roundIds, and safely handles malformed storage', () => {
+    const storage = new MemoryStorage();
+
+    // Append 16 unique rounds; oldest should be evicted to maintain max 15
+    for (let i = 1; i <= 16; i++) {
+      const pocket = i % 37;
+      const color = getPocketColor(pocket);
+      const entry: SpinHistoryEntry = {
+        roundId: `round_${i}`,
+        number: pocket,
+        color,
+        timestamp: 1700000000000 + i * 1000,
+        totalWager: 25,
+        grossPayout: i % 2 === 0 ? 50 : 0,
+        net: i % 2 === 0 ? 25 : -25,
+      };
+      appendRouletteHistoryEntry(entry, storage);
+    }
+
+    const loaded = loadRouletteHistory(storage);
+    expect(loaded).toHaveLength(15);
+    expect(loaded[0].roundId).toBe('round_16');
+    expect(loaded[14].roundId).toBe('round_2');
+
+    // Duplicate roundId must not insert a duplicate entry
+    appendRouletteHistoryEntry(loaded[0], storage);
+    expect(loadRouletteHistory(storage)).toHaveLength(15);
+    expect(loadRouletteHistory(storage)[0].roundId).toBe('round_16');
+
+    // Corrupt JSON does not throw and safely returns []
+    storage.setItem(ROULETTE_HISTORY_STORAGE_KEY, '{not-valid-json');
+    expect(loadRouletteHistory(storage)).toEqual([]);
+
+    // Mixed valid + malformed entries sanitize cleanly
+    const cleaned = sanitizeRouletteHistory([
+      { roundId: '', number: 7, color: 'red', timestamp: 1000, totalWager: 10, grossPayout: 20, net: 10 },
+      { roundId: 'bad_num', number: 37, color: 'red', timestamp: 1000, totalWager: 10, grossPayout: 0, net: -10 },
+      { roundId: 'bad_color', number: 0, color: 'red', timestamp: 1000, totalWager: 10, grossPayout: 0, net: -10 },
+      { roundId: 'valid_zero', number: 0, color: 'green', timestamp: 2000, totalWager: 10, grossPayout: 360, net: 350 },
+      { roundId: 'valid_zero', number: 0, color: 'green', timestamp: 2000, totalWager: 10, grossPayout: 360, net: 350 },
+    ]);
+    expect(cleaned).toHaveLength(1);
+    expect(cleaned[0].roundId).toBe('valid_zero');
+
+    clearRouletteHistory(storage);
+    expect(loadRouletteHistory(storage)).toEqual([]);
   });
 });

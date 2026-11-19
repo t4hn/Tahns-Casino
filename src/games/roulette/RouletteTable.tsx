@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   PlacedRouletteBet,
   RouletteBetSpot,
@@ -25,9 +26,12 @@ interface RouletteTableProps {
   onRemoveSpot: (spotId: string) => void;
 }
 
+type HotspotAxis = 'v-split' | 'h-split' | 'intersection' | 'street' | 'six-line';
+
 interface HotspotCoord {
   spotId: string;
   type: RouletteBetType;
+  axis: HotspotAxis;
   xPct: number;
   yPct: number;
 }
@@ -68,7 +72,75 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
   onRemoveSpot,
 }) => {
   const [hoveredSpotId, setHoveredSpotId] = useState<string | null>(null);
+  const [lastFeedback, setLastFeedback] = useState<{
+    spotId: string;
+    action: 'selected' | 'removed';
+  } | null>(null);
   const [placementMode, setPlacementMode] = useState<BetPlacementMode>('all');
+
+  // Horizontal scroll container & left/right edge scroll indicators
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const feedbackTimerRef = useRef<number | null>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollIndicators = useCallback(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const { scrollLeft, clientWidth, scrollWidth } = el;
+    const maxScroll = scrollWidth - clientWidth;
+    if (maxScroll <= 4) {
+      setCanScrollLeft(false);
+      setCanScrollRight(false);
+      return;
+    }
+    setCanScrollLeft(scrollLeft > 4);
+    setCanScrollRight(scrollLeft < maxScroll - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollIndicators();
+    const el = tableScrollRef.current;
+    let observer: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => updateScrollIndicators());
+      observer.observe(el);
+    }
+    window.addEventListener('resize', updateScrollIndicators);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateScrollIndicators);
+    };
+  }, [updateScrollIndicators]);
+
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current !== null) {
+        clearTimeout(feedbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  const scrollTableBy = (delta: number) => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    if (typeof el.scrollBy === 'function') {
+      el.scrollBy({ left: delta, behavior: 'smooth' });
+    } else {
+      el.scrollLeft += delta;
+    }
+  };
+
+  const triggerSpotFeedback = (spotId: string, action: 'selected' | 'removed') => {
+    setLastFeedback({ spotId, action });
+    if (feedbackTimerRef.current !== null) {
+      clearTimeout(feedbackTimerRef.current);
+    }
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setLastFeedback(null);
+      feedbackTimerRef.current = null;
+    }, 900);
+  };
 
   const betBySpotId = useMemo(() => {
     const map = new Map<string, PlacedRouletteBet>();
@@ -78,43 +150,46 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
 
   const winningSpotSet = useMemo(() => new Set(winningSpotIds), [winningSpotIds]);
 
-  const hoveredSpot: RouletteBetSpot | undefined = hoveredSpotId
-    ? getRouletteSpot(hoveredSpotId)
+  const activeSpotId = hoveredSpotId ?? lastFeedback?.spotId ?? null;
+  const activeSpot: RouletteBetSpot | undefined = activeSpotId
+    ? getRouletteSpot(activeSpotId)
     : undefined;
 
   const highlightedNumbers = useMemo(() => {
-    if (hoveredSpot) {
-      return new Set(hoveredSpot.numbers);
+    if (activeSpot) {
+      return new Set(activeSpot.numbers);
     }
     return new Set<number>();
-  }, [hoveredSpot]);
+  }, [activeSpot]);
 
-  // Inside border hotspots over the 12x3 grid
+  // Inside border hotspots over the 12x3 grid with non-overlapping directional hit areas
   const insideHotspots: HotspotCoord[] = useMemo(() => {
     const list: HotspotCoord[] = [];
 
     // Zero Splits & Zero Trios along the left edge (x = 0%)
-    list.push({ spotId: 'split:0-3', type: 'split', xPct: 0, yPct: (0.5 / 3) * 100 });
-    list.push({ spotId: 'split:0-2', type: 'split', xPct: 0, yPct: (1.5 / 3) * 100 });
-    list.push({ spotId: 'split:0-1', type: 'split', xPct: 0, yPct: (2.5 / 3) * 100 });
-    list.push({ spotId: 'street:0-2-3', type: 'street', xPct: 0, yPct: (1 / 3) * 100 });
-    list.push({ spotId: 'street:0-1-2', type: 'street', xPct: 0, yPct: (2 / 3) * 100 });
+    list.push({ spotId: 'split:0-3', type: 'split', axis: 'h-split', xPct: 0, yPct: (0.5 / 3) * 100 });
+    list.push({ spotId: 'split:0-2', type: 'split', axis: 'h-split', xPct: 0, yPct: (1.5 / 3) * 100 });
+    list.push({ spotId: 'split:0-1', type: 'split', axis: 'h-split', xPct: 0, yPct: (2.5 / 3) * 100 });
+    list.push({ spotId: 'street:0-2-3', type: 'street', axis: 'intersection', xPct: 0, yPct: (1 / 3) * 100 });
+    list.push({ spotId: 'street:0-1-2', type: 'street', axis: 'intersection', xPct: 0, yPct: (2 / 3) * 100 });
 
     for (let col = 0; col < 12; col++) {
       const base = col * 3 + 1;
       const colCenterX = ((col + 0.5) / 12) * 100;
       const colBorderX = ((col + 1) / 12) * 100;
 
-      // Vertical splits within street
+      // Vertical splits within column (wide horizontally, sleek vertically so zero overlap with corners)
       list.push({
         spotId: `split:${base + 1}-${base + 2}`,
         type: 'split',
+        axis: 'v-split',
         xPct: colCenterX,
         yPct: (1 / 3) * 100,
       });
       list.push({
         spotId: `split:${base}-${base + 1}`,
         type: 'split',
+        axis: 'v-split',
         xPct: colCenterX,
         yPct: (2 / 3) * 100,
       });
@@ -123,18 +198,20 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
       list.push({
         spotId: `street:${base}-${base + 2}`,
         type: 'street',
+        axis: 'street',
         xPct: colCenterX,
         yPct: 100,
       });
 
       if (col < 11) {
-        // Horizontal splits to next street
+        // Horizontal splits to next column (tall vertically, narrow horizontally so zero overlap with corners)
         for (let r = 0; r < 3; r++) {
           const a = base + (2 - r);
           const b = a + 3;
           list.push({
             spotId: `split:${a}-${b}`,
             type: 'split',
+            axis: 'h-split',
             xPct: colBorderX,
             yPct: ((r + 0.5) / 3) * 100,
           });
@@ -144,12 +221,14 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
         list.push({
           spotId: `corner:${base + 1}-${base + 2}-${base + 4}-${base + 5}`,
           type: 'corner',
+          axis: 'intersection',
           xPct: colBorderX,
           yPct: (1 / 3) * 100,
         });
         list.push({
           spotId: `corner:${base}-${base + 1}-${base + 3}-${base + 4}`,
           type: 'corner',
+          axis: 'intersection',
           xPct: colBorderX,
           yPct: (2 / 3) * 100,
         });
@@ -158,6 +237,7 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
         list.push({
           spotId: `six_line:${base}-${base + 5}`,
           type: 'six_line',
+          axis: 'six-line',
           xPct: colBorderX,
           yPct: 100,
         });
@@ -171,10 +251,12 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
     if (disabled) return;
     if (removeMode) {
       if (betBySpotId.has(spotId)) {
+        triggerSpotFeedback(spotId, 'removed');
         onRemoveSpot(spotId);
       }
       return;
     }
+    triggerSpotFeedback(spotId, 'selected');
     onPlaceBet(spotId);
   };
 
@@ -182,6 +264,7 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
     e.preventDefault();
     if (disabled) return;
     if (betBySpotId.has(spotId)) {
+      triggerSpotFeedback(spotId, 'removed');
       onRemoveSpot(spotId);
     }
   };
@@ -191,6 +274,7 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
     if (!placed) return null;
     const isWinning = winningNumber !== null && winningSpotSet.has(spotId);
     const isDimmed = winningNumber !== null && !isWinning;
+    const isRecentlyTapped = lastFeedback?.spotId === spotId && lastFeedback.action === 'selected';
 
     return (
       <span
@@ -200,6 +284,8 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
         )} ${
           isWinning
             ? 'ring-2 ring-amber-300 scale-110 shadow-amber-400/40'
+            : isRecentlyTapped
+            ? 'ring-2 ring-emerald-300 scale-110'
             : isDimmed
             ? 'opacity-50'
             : ''
@@ -235,6 +321,38 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
     return placementMode === type;
   };
 
+  const getHotspotHitboxClass = (spot: HotspotCoord, isFocusedMode: boolean): string => {
+    // Non-overlapping directional bounding boxes keep adjacent positions independently selectable,
+    // while focused mode expands invisible touch areas safely because sibling spot types are hidden.
+    if (isFocusedMode) {
+      switch (spot.axis) {
+        case 'intersection':
+          return 'w-9 h-9 z-30';
+        case 'six-line':
+          return 'w-9 h-8 z-30';
+        case 'street':
+          return 'w-9 h-8 z-20';
+        case 'v-split':
+          return 'w-7 h-6 z-20';
+        case 'h-split':
+          return 'w-6 h-7 z-20';
+      }
+    }
+
+    switch (spot.axis) {
+      case 'intersection':
+        return 'w-[22px] h-[22px] z-30';
+      case 'six-line':
+        return 'w-[22px] h-[24px] z-30';
+      case 'street':
+        return 'w-[26px] h-[24px] z-20';
+      case 'v-split':
+        return 'w-[26px] h-[20px] z-20';
+      case 'h-split':
+        return 'w-[20px] h-[26px] z-20';
+    }
+  };
+
   return (
     <div className="space-y-3">
       {/* ── Inside Bet Mode Selector & Live Felt Readout ── */}
@@ -242,7 +360,7 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
         <div
           role="group"
           aria-label="Inside bet selector mode"
-          className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none"
+          className="flex flex-wrap items-center gap-1.5"
         >
           {MODE_OPTIONS.map((opt) => {
             const active = placementMode === opt.id;
@@ -252,7 +370,7 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                 type="button"
                 disabled={disabled}
                 onClick={() => setPlacementMode(opt.id)}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap shrink-0 min-h-[34px] border cursor-pointer disabled:opacity-50 ${
+                className={`touch-manipulation px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap shrink-0 min-h-[34px] border cursor-pointer disabled:opacity-50 ${
                   active
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/50 font-semibold'
                     : 'bg-[#0b1118] text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700'
@@ -274,9 +392,15 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
             <span className="text-rose-300 font-mono text-[11px] whitespace-nowrap">
               Remove Mode: Tap any chip to remove
             </span>
-          ) : hoveredSpot ? (
-            <span className="text-amber-300 font-mono text-[11px] truncate">
-              {hoveredSpot.label} · Pays {hoveredSpot.payoutOdds}:1
+          ) : activeSpot ? (
+            <span
+              data-testid="active-spot-readout"
+              className="text-amber-300 font-mono text-[11px] truncate"
+            >
+              {lastFeedback && hoveredSpotId === null
+                ? `${lastFeedback.action === 'removed' ? 'Removed' : 'Selected'}: `
+                : ''}
+              {activeSpot.label} · Pays {activeSpot.payoutOdds}:1
             </span>
           ) : (
             <span className="text-slate-400 text-[11px] sm:whitespace-nowrap">
@@ -287,14 +411,63 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
       </div>
 
       {/* ── Luxury Emerald Felt Roulette Layout ── */}
-      <div className="rounded-2xl bg-gradient-to-b from-[#083525] via-[#062a1d] to-[#041d14] border border-amber-500/40 p-3 sm:p-4 shadow-[inset_0_0_40px_rgba(0,0,0,0.45)]">
-        <div className="overflow-x-auto pb-1">
+      <div className="relative rounded-2xl bg-gradient-to-b from-[#083525] via-[#062a1d] to-[#041d14] border border-amber-500/40 p-3 sm:p-4 shadow-[inset_0_0_40px_rgba(0,0,0,0.45)]">
+        {/* Left Horizontal Scroll Edge Fade & Indicator */}
+        <div
+          aria-hidden={!canScrollLeft}
+          data-testid="scroll-indicator-left"
+          className={`pointer-events-none absolute left-0 top-3 bottom-3 w-10 z-30 rounded-l-2xl bg-gradient-to-r from-[#041d14]/90 via-[#041d14]/45 to-transparent flex items-center justify-start pl-1 transition-opacity duration-200 ${
+            canScrollLeft ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <button
+            type="button"
+            tabIndex={canScrollLeft ? 0 : -1}
+            aria-label="Scroll betting table left"
+            onClick={() => scrollTableBy(-160)}
+            className={`${
+              canScrollLeft ? 'pointer-events-auto' : 'pointer-events-none'
+            } flex h-7 w-7 items-center justify-center rounded-full bg-[#062318]/90 border border-amber-400/45 text-amber-300 shadow-md hover:bg-emerald-900/90 active:scale-95 transition-transform cursor-pointer`}
+          >
+            <ChevronLeft size={15} />
+          </button>
+        </div>
+
+        {/* Right Horizontal Scroll Edge Fade & Indicator */}
+        <div
+          aria-hidden={!canScrollRight}
+          data-testid="scroll-indicator-right"
+          className={`pointer-events-none absolute right-0 top-3 bottom-3 w-10 z-30 rounded-r-2xl bg-gradient-to-l from-[#041d14]/90 via-[#041d14]/45 to-transparent flex items-center justify-end pr-1 transition-opacity duration-200 ${
+            canScrollRight ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <button
+            type="button"
+            tabIndex={canScrollRight ? 0 : -1}
+            aria-label="Scroll betting table right"
+            onClick={() => scrollTableBy(160)}
+            className={`${
+              canScrollRight ? 'pointer-events-auto' : 'pointer-events-none'
+            } flex h-7 w-7 items-center justify-center rounded-full bg-[#062318]/90 border border-amber-400/45 text-amber-300 shadow-md hover:bg-emerald-900/90 active:scale-95 transition-transform cursor-pointer`}
+          >
+            <ChevronRight size={15} />
+          </button>
+        </div>
+
+        <div
+          ref={tableScrollRef}
+          data-testid="roulette-table-scroll"
+          onScroll={updateScrollIndicators}
+          className="overflow-x-auto overscroll-x-contain pb-1"
+        >
           <div className="min-w-[660px] select-none">
             {/* Top Matrix: [ 0 ] + [ 12x3 Numbers + Inside Hotspots ] + [ 2:1 Columns ] */}
             <div className="grid grid-cols-[54px_1fr_54px] gap-0">
               {/* Green Zero Pocket (spans 3 rows) */}
               {(() => {
                 const zeroPlaced = betBySpotId.has('straight:0');
+                const zeroSelectedFlash =
+                  lastFeedback?.spotId === 'straight:0' && lastFeedback.action === 'selected';
                 return (
                   <button
                     type="button"
@@ -306,9 +479,11 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                     onBlur={() => setHoveredSpotId(null)}
                     onClick={() => handleSpotInteraction('straight:0')}
                     onContextMenu={(e) => handleSpotContextMenu(e, 'straight:0')}
-                    className={`relative flex items-center justify-center rounded-l-xl border border-amber-500/45 font-mono text-lg font-bold transition-all min-h-[144px] cursor-pointer disabled:cursor-not-allowed ${
+                    className={`touch-manipulation relative flex items-center justify-center rounded-l-xl border border-amber-500/45 font-mono text-lg font-bold transition-all min-h-[144px] cursor-pointer disabled:cursor-not-allowed ${
                       winningNumber === 0
                         ? 'bg-emerald-500 text-slate-950 ring-2 ring-amber-300 shadow-[inset_0_0_16px_rgba(251,191,36,0.6)] z-10'
+                        : zeroSelectedFlash
+                        ? 'bg-emerald-600 text-white ring-2 ring-amber-300 z-10'
                         : highlightedNumbers.has(0)
                         ? 'bg-emerald-600/80 text-white ring-2 ring-amber-300/80'
                         : 'bg-emerald-700/70 hover:bg-emerald-600/80 text-white'
@@ -339,6 +514,8 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                     const isWinner = winningNumber === num;
                     const isHighlighted = highlightedNumbers.has(num);
                     const hasPlaced = betBySpotId.has(spotId);
+                    const isSelectedFlash =
+                      lastFeedback?.spotId === spotId && lastFeedback.action === 'selected';
 
                     return (
                       <button
@@ -352,11 +529,13 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                         onBlur={() => setHoveredSpotId(null)}
                         onClick={() => handleSpotInteraction(spotId)}
                         onContextMenu={(e) => handleSpotContextMenu(e, spotId)}
-                        className={`relative h-12 sm:h-13 border-t border-r border-amber-500/35 last:border-b-0 flex items-center justify-center font-mono text-sm sm:text-base font-bold transition-all cursor-pointer disabled:cursor-not-allowed ${
+                        className={`touch-manipulation relative h-12 sm:h-13 border-t border-r border-amber-500/35 last:border-b-0 flex items-center justify-center font-mono text-sm sm:text-base font-bold transition-all cursor-pointer disabled:cursor-not-allowed ${
                           num % 3 === 1 ? 'border-b border-amber-500/35' : ''
                         } ${
                           isWinner
                             ? 'ring-2 ring-amber-300 z-10 brightness-125 shadow-[inset_0_0_14px_rgba(251,191,36,0.7)]'
+                            : isSelectedFlash
+                            ? 'ring-2 ring-amber-300 brightness-125 z-10'
                             : isHighlighted
                             ? 'ring-2 ring-amber-300/75 brightness-125 z-10'
                             : ''
@@ -383,7 +562,7 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                   })}
                 </div>
 
-                {/* Inside Bet Hotspots Layer (Splits, Streets, Corners, Six Lines) */}
+                {/* Inside Bet Hotspots Layer (Expanded invisible hit targets with compact visual dots) */}
                 <div className="pointer-events-none absolute inset-0 z-20">
                   {insideHotspots.map((spot) => {
                     const betSpot = getRouletteSpot(spot.spotId);
@@ -393,17 +572,13 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                     const isFocusedMode =
                       placementMode !== 'all' && placementMode === spot.type;
 
-                    // In straight-only mode, hide border hotspots unless a bet already rests there
                     if (!modeActive && !hasPlaced) {
                       return null;
                     }
 
-                    const sizeClass =
-                      spot.type === 'corner' || spot.type === 'six_line'
-                        ? 'w-5 h-5'
-                        : spot.type === 'street'
-                        ? 'w-7 h-4'
-                        : 'w-4 h-4';
+                    const isTappedFlash =
+                      lastFeedback?.spotId === spot.spotId && lastFeedback.action === 'selected';
+                    const hitboxClass = getHotspotHitboxClass(spot, isFocusedMode);
 
                     return (
                       <button
@@ -424,13 +599,26 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                           left: `${spot.xPct}%`,
                           top: `${spot.yPct}%`,
                         }}
-                        className={`pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition-all cursor-pointer disabled:cursor-not-allowed ${sizeClass} ${
-                          isFocusedMode && !hasPlaced
-                            ? 'bg-amber-400/25 border border-amber-300/70 hover:bg-amber-400/50 hover:scale-125'
-                            : 'hover:bg-amber-400/40 focus-visible:bg-amber-400/50'
-                        }`}
+                        className={`touch-manipulation pointer-events-auto group/spot absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full cursor-pointer disabled:cursor-not-allowed ${hitboxClass}`}
                       >
-                        {renderChipMarker(spot.spotId)}
+                        {hasPlaced ? (
+                          renderChipMarker(spot.spotId)
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className={`pointer-events-none rounded-full transition-all ${
+                              spot.axis === 'intersection' || spot.axis === 'six-line'
+                                ? 'w-4 h-4'
+                                : 'w-3.5 h-3.5'
+                            } ${
+                              isTappedFlash
+                                ? 'bg-amber-300/75 ring-2 ring-amber-200 scale-125'
+                                : isFocusedMode
+                                ? 'bg-amber-400/30 border border-amber-300/80 group-hover/spot:bg-amber-400/60 group-hover/spot:scale-125 group-active/spot:scale-125'
+                                : 'group-hover/spot:bg-amber-400/45 group-focus-visible/spot:bg-amber-400/55 group-active/spot:bg-amber-300/60'
+                            }`}
+                          />
+                        )}
                       </button>
                     );
                   })}
@@ -443,6 +631,8 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                   const spotId = `column:${colNum}`;
                   const isWinning = winningNumber !== null && winningSpotSet.has(spotId);
                   const hasPlaced = betBySpotId.has(spotId);
+                  const isSelectedFlash =
+                    lastFeedback?.spotId === spotId && lastFeedback.action === 'selected';
                   return (
                     <button
                       key={spotId}
@@ -455,13 +645,15 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                       onBlur={() => setHoveredSpotId(null)}
                       onClick={() => handleSpotInteraction(spotId)}
                       onContextMenu={(e) => handleSpotContextMenu(e, spotId)}
-                      className={`relative h-12 sm:h-13 border-t border-r border-amber-500/45 flex items-center justify-center font-mono text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed ${
+                      className={`touch-manipulation relative h-12 sm:h-13 border-t border-r border-amber-500/45 flex items-center justify-center font-mono text-xs font-bold transition-all cursor-pointer disabled:cursor-not-allowed ${
                         idx === 0 ? 'rounded-tr-xl' : ''
                       } ${
                         idx === 2 ? 'rounded-br-xl border-b border-amber-500/45' : ''
                       } ${
                         isWinning
                           ? 'bg-emerald-500/35 text-amber-200 ring-2 ring-amber-300 z-10'
+                          : isSelectedFlash
+                          ? 'bg-emerald-700/50 text-amber-200 ring-2 ring-amber-300 z-10'
                           : 'bg-[#05291c] hover:bg-emerald-800/45 text-amber-100'
                       }`}
                     >
@@ -494,6 +686,8 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                 ].map((dozen, idx) => {
                   const isWinning = winningNumber !== null && winningSpotSet.has(dozen.id);
                   const hasPlaced = betBySpotId.has(dozen.id);
+                  const isSelectedFlash =
+                    lastFeedback?.spotId === dozen.id && lastFeedback.action === 'selected';
                   return (
                     <button
                       key={dozen.id}
@@ -506,11 +700,13 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                       onBlur={() => setHoveredSpotId(null)}
                       onClick={() => handleSpotInteraction(dozen.id)}
                       onContextMenu={(e) => handleSpotContextMenu(e, dozen.id)}
-                      className={`relative h-11 flex items-center justify-center font-display text-xs sm:text-sm font-bold tracking-wide transition-all cursor-pointer disabled:cursor-not-allowed ${
+                      className={`touch-manipulation relative h-11 flex items-center justify-center font-display text-xs sm:text-sm font-bold tracking-wide transition-all cursor-pointer disabled:cursor-not-allowed ${
                         idx < 2 ? 'border-r border-amber-500/35' : ''
                       } ${
                         isWinning
                           ? 'bg-emerald-500/30 text-amber-200 ring-2 ring-amber-300 z-10'
+                          : isSelectedFlash
+                          ? 'bg-emerald-700/50 text-amber-200 ring-2 ring-amber-300 z-10'
                           : 'bg-[#052a1d] hover:bg-emerald-800/40 text-slate-100'
                       }`}
                     >
@@ -534,6 +730,8 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                 {outsideRow.map((item, idx) => {
                   const isWinning = winningNumber !== null && winningSpotSet.has(item.spotId);
                   const hasPlaced = betBySpotId.has(item.spotId);
+                  const isSelectedFlash =
+                    lastFeedback?.spotId === item.spotId && lastFeedback.action === 'selected';
                   return (
                     <button
                       key={item.spotId}
@@ -546,10 +744,10 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
                       onBlur={() => setHoveredSpotId(null)}
                       onClick={() => handleSpotInteraction(item.spotId)}
                       onContextMenu={(e) => handleSpotContextMenu(e, item.spotId)}
-                      className={`relative h-12 flex items-center justify-center font-display text-xs sm:text-sm font-bold tracking-wider transition-all cursor-pointer disabled:cursor-not-allowed ${
+                      className={`touch-manipulation relative h-12 flex items-center justify-center font-display text-xs sm:text-sm font-bold tracking-wider transition-all cursor-pointer disabled:cursor-not-allowed ${
                         idx < 5 ? 'border-r border-amber-500/35' : ''
                       } ${
-                        isWinning
+                        isWinning || isSelectedFlash
                           ? 'ring-2 ring-amber-300 z-10 brightness-125'
                           : ''
                       } ${
@@ -593,9 +791,13 @@ export const RouletteTable: React.FC<RouletteTableProps> = ({
           </div>
         </div>
 
-        <p className="sm:hidden text-[10px] font-mono text-emerald-300/70 text-center mt-1.5">
-          Swipe table sideways to reach all 36 numbers &amp; column bets
-        </p>
+        {(canScrollLeft || canScrollRight) && (
+          <div className="sm:hidden flex items-center justify-center gap-1.5 text-[10px] font-mono text-emerald-300/75 mt-1.5">
+            <span>{canScrollLeft ? '←' : ''}</span>
+            <span>Swipe table sideways for all numbers &amp; columns</span>
+            <span>{canScrollRight ? '→' : ''}</span>
+          </div>
+        )}
       </div>
     </div>
   );

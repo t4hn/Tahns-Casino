@@ -184,7 +184,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
         data-testid="roulette-wheel"
         data-spinning={isSpinning ? 'true' : 'false'}
         data-winning-number={winningNumber !== null ? String(winningNumber) : ''}
-        className="relative w-[240px] h-[240px] sm:w-[280px] sm:h-[280px] lg:w-[300px] lg:h-[300px] flex items-center justify-center"
+        className="relative mx-auto w-[196px] h-[196px] sm:w-[264px] sm:h-[264px] lg:w-[300px] lg:h-[300px] flex items-center justify-center"
       >
         {/* Subtle emerald ambient glow */}
         <div className="pointer-events-none absolute inset-4 rounded-full bg-emerald-500/10 blur-2xl" />
@@ -300,7 +300,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
                     x={textPos.x}
                     y={textPos.y}
                     fill={isWinningPocket ? '#fef08a' : '#f8fafc'}
-                    fontSize="9.5"
+                    fontSize="10"
                     fontWeight="700"
                     fontFamily="var(--font-mono), monospace"
                     textAnchor="middle"
@@ -365,7 +365,7 @@ export const RouletteWheel: React.FC<RouletteWheelProps> = ({
       </div>
 
       {/* Compact Pocket Readout Pill-Free Bar */}
-      <div className="mt-2 min-h-[34px] flex items-center justify-center">
+      <div className="mt-1 sm:mt-2 min-h-[32px] flex items-center justify-center">
         {isSpinning ? (
           <span className="text-xs font-mono uppercase tracking-widest text-amber-300">
             Ball in Motion...

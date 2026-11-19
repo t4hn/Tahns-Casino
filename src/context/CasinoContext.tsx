@@ -6,7 +6,16 @@ import {
   ActivityItem,
   CasinoSettings,
   NavTab,
+  PendingRoundMeta,
 } from '../types/casino';
+import {
+  appendRouletteHistoryEntry,
+  clearRouletteHistory,
+} from '../games/roulette/rouletteHistoryStorage';
+import {
+  recordCompletedKenoRound,
+  clearKenoPersistence,
+} from '../games/keno/kenoStorage';
 import {
   WalletProfile,
   LevelInfo,
@@ -241,6 +250,36 @@ export interface PendingRound {
   bet: number;
   payout?: number;
   timestamp: number;
+  meta?: PendingRoundMeta;
+}
+
+export function applyPendingRouletteHistoryRecovery(
+  pending: PendingRound,
+  storage?: Storage
+): boolean {
+  if (pending.gameId !== 'roulette' || !pending.meta?.rouletteResult) {
+    return false;
+  }
+  const before = storage
+    ? appendRouletteHistoryEntry(pending.meta.rouletteResult, storage)
+    : appendRouletteHistoryEntry(pending.meta.rouletteResult);
+  return before.some((e) => e.roundId === pending.meta?.rouletteResult?.roundId);
+}
+
+export function applyPendingKenoHistoryRecovery(
+  pending: PendingRound,
+  storage?: Storage
+): boolean {
+  if (pending.gameId !== 'keno' || !pending.meta?.kenoResult) {
+    return false;
+  }
+  const res = storage
+    ? recordCompletedKenoRound(pending.meta.kenoResult, storage)
+    : recordCompletedKenoRound(pending.meta.kenoResult);
+  return (
+    res.history.some((e) => e.roundId === pending.meta?.kenoResult?.roundId) ||
+    res.stats.recordedRoundIds.includes(pending.meta.kenoResult.roundId)
+  );
 }
 
 export function updateAchievementProgressPure(
@@ -453,7 +492,8 @@ interface CasinoContextType {
     gameId: string,
     gameName: string,
     bet: number,
-    payout?: number
+    payout?: number,
+    meta?: PendingRoundMeta
   ) => { success: boolean; error?: string };
   resolveRound: (
     gameId: string,
@@ -466,7 +506,8 @@ interface CasinoContextType {
     gameId: string,
     gameName: string,
     bet: number,
-    payout?: number
+    payout?: number,
+    meta?: PendingRoundMeta
   ) => void;
   executeRound: (
     gameId: string,
@@ -491,9 +532,15 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     soundManager.setEnabled(state.settings.soundEffects);
   }, [state.settings.soundEffects]);
 
-  // One-time cleanup effect on mount: ensure pending round is cleared from storage once loaded
+  // One-time cleanup effect on mount: ensure pending round is cleared and any recovered roulette history is recorded once
   useEffect(() => {
     try {
+      const savedPending = localStorage.getItem(`${STORAGE_KEY}_pending_round`);
+      if (savedPending && profileRef.current) {
+        const pending = JSON.parse(savedPending) as PendingRound;
+        applyPendingRouletteHistoryRecovery(pending);
+        applyPendingKenoHistoryRecovery(pending);
+      }
       localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
     } catch {
       // ignore
@@ -652,7 +699,8 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       gameId: string,
       gameName: string,
       bet: number,
-      payout?: number
+      payout?: number,
+      meta?: PendingRoundMeta
     ): { success: boolean; error?: string } => {
       const currentProfile = profileRef.current;
       if (!currentProfile) {
@@ -669,12 +717,13 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // Persist pending round and latest profile to localStorage immediately
       try {
-        const pending = {
+        const pending: PendingRound = {
           gameId,
           gameName,
           bet,
           payout,
           timestamp: Date.now(),
+          ...(meta ? { meta } : {}),
         };
         localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pending));
         localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
@@ -690,7 +739,13 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const updatePendingRound = useCallback(
-    (gameId: string, gameName: string, bet: number, payout?: number) => {
+    (
+      gameId: string,
+      gameName: string,
+      bet: number,
+      payout?: number,
+      meta?: PendingRoundMeta
+    ) => {
       try {
         const pending: PendingRound = {
           gameId,
@@ -698,6 +753,7 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           bet,
           payout,
           timestamp: Date.now(),
+          ...(meta ? { meta } : {}),
         };
         localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pending));
       } catch (e) {
@@ -987,6 +1043,8 @@ export const CasinoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       localStorage.removeItem(`${STORAGE_KEY}_games`);
       localStorage.removeItem(`${STORAGE_KEY}_visited_games`);
       localStorage.removeItem(`${STORAGE_KEY}_pending_round`);
+      clearRouletteHistory();
+      clearKenoPersistence();
     } catch {
       // ignore
     }

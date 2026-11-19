@@ -2,8 +2,19 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { placeBet as placeBetPure, WalletProfile } from '../economy/wallet';
 import {
   recoverInterruptedRound,
+  applyPendingRouletteHistoryRecovery,
+  applyPendingKenoHistoryRecovery,
   PendingRound,
 } from './CasinoContext';
+import {
+  loadRouletteHistory,
+  ROULETTE_HISTORY_STORAGE_KEY,
+} from '../games/roulette/rouletteHistoryStorage';
+import {
+  loadKenoHistory,
+  loadKenoStats,
+  KENO_HISTORY_STORAGE_KEY,
+} from '../games/keno/kenoStorage';
 import { INITIAL_ACHIEVEMENTS } from '../data/initialData';
 import { Achievement, ActivityItem } from '../types/casino';
 
@@ -340,5 +351,110 @@ describe('Round-in-Progress Interruption & Crash Recovery', () => {
     const secondInit = emulateAppInit(localStorage);
     expect(secondInit.recoveredActivity).toBe(false);
     expect(secondInit.profile!.credits).toBe(1180);
+  });
+
+  it('recovers an interrupted Roulette spin and persists history entry strictly once', () => {
+    const initialProfile = createMockProfile({ credits: 1000, gamesPlayed: 5, totalWinnings: 200 });
+    const bet = 25;
+    const payout = 50;
+    const betRes = placeBetPure(initialProfile, bet);
+
+    const pendingRoulette: PendingRound = {
+      gameId: 'roulette',
+      gameName: 'Roulette',
+      bet,
+      payout,
+      timestamp: Date.now(),
+      meta: {
+        roundId: 'roulette_crash_round_1',
+        rouletteResult: {
+          roundId: 'roulette_crash_round_1',
+          number: 25,
+          color: 'red',
+          timestamp: Date.now(),
+          totalWager: bet,
+          grossPayout: payout,
+          net: 25,
+        },
+      },
+    };
+
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
+    localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pendingRoulette));
+
+    const firstInit = emulateAppInit(localStorage);
+    expect(firstInit.recoveredActivity).toBe(true);
+    expect(firstInit.profile!.credits).toBe(1025);
+
+    // Apply roulette history recovery twice (simulating StrictMode / duplicate call)
+    expect(applyPendingRouletteHistoryRecovery(pendingRoulette, localStorage)).toBe(true);
+    expect(applyPendingRouletteHistoryRecovery(pendingRoulette, localStorage)).toBe(true);
+
+    const savedHistory = loadRouletteHistory(localStorage);
+    expect(savedHistory).toHaveLength(1);
+    expect(savedHistory[0]).toMatchObject({
+      roundId: 'roulette_crash_round_1',
+      number: 25,
+      color: 'red',
+      totalWager: 25,
+      grossPayout: 50,
+      net: 25,
+    });
+    expect(localStorage.getItem(ROULETTE_HISTORY_STORAGE_KEY)).not.toBeNull();
+  });
+
+  it('recovers an interrupted Keno draw and persists history & stats strictly once', () => {
+    const initialProfile = createMockProfile({ credits: 1000, gamesPlayed: 5, totalWinnings: 200 });
+    const bet = 20;
+    const payout = 960; // 3-spot all 3 hit = 48x -> 960 Cr
+    const betRes = placeBetPure(initialProfile, bet);
+    const drawn = Array.from({ length: 20 }, (_, i) => i + 1);
+
+    const pendingKeno: PendingRound = {
+      gameId: 'keno',
+      gameName: 'Keno',
+      bet,
+      payout,
+      timestamp: Date.now(),
+      meta: {
+        roundId: 'keno_crash_round_1',
+        kenoResult: {
+          roundId: 'keno_crash_round_1',
+          timestamp: Date.now(),
+          selectedNumbers: [1, 2, 3],
+          drawnNumbers: drawn,
+          matchedNumbers: [1, 2, 3],
+          spotCount: 3,
+          hits: 3,
+          multiplier: 48,
+          wager: bet,
+          grossPayout: payout,
+          net: 940,
+        },
+      },
+    };
+
+    localStorage.setItem(`${STORAGE_KEY}_profile`, JSON.stringify(betRes.profile));
+    localStorage.setItem(`${STORAGE_KEY}_pending_round`, JSON.stringify(pendingKeno));
+
+    const firstInit = emulateAppInit(localStorage);
+    expect(firstInit.recoveredActivity).toBe(true);
+    expect(firstInit.profile!.credits).toBe(1940); // 980 + 960
+    expect(firstInit.profile!.gamesPlayed).toBe(6);
+
+    // Duplicate calls to Keno recovery must be idempotent
+    expect(applyPendingKenoHistoryRecovery(pendingKeno, localStorage)).toBe(true);
+    expect(applyPendingKenoHistoryRecovery(pendingKeno, localStorage)).toBe(true);
+
+    const savedHistory = loadKenoHistory(localStorage);
+    const savedStats = loadKenoStats(localStorage);
+    expect(savedHistory).toHaveLength(1);
+    expect(savedHistory[0].roundId).toBe('keno_crash_round_1');
+    expect(savedStats.totalRounds).toBe(1);
+    expect(savedStats.winningRounds).toBe(1);
+    expect(savedStats.bestHits).toBe(3);
+    expect(savedStats.biggestGrossPayout).toBe(960);
+    expect(savedStats.totalNet).toBe(940);
+    expect(localStorage.getItem(KENO_HISTORY_STORAGE_KEY)).not.toBeNull();
   });
 });

@@ -4,14 +4,44 @@ import { GameFloorItem } from '../games/types';
 
 export type RoundResult = SettleResult;
 
+export interface PendingRoundMeta {
+  roundId?: string;
+  rouletteResult?: {
+    roundId: string;
+    number: number;
+    color: 'green' | 'red' | 'black';
+    timestamp: number;
+    totalWager: number;
+    grossPayout: number;
+    net: number;
+  };
+  kenoResult?: {
+    roundId: string;
+    timestamp: number;
+    selectedNumbers: number[];
+    drawnNumbers: number[];
+    matchedNumbers: number[];
+    spotCount: number;
+    hits: number;
+    multiplier: number;
+    wager: number;
+    grossPayout: number;
+    net: number;
+  };
+}
+
 export interface GameProps {
   balance: number;
   minBet: number;
   maxBet: number;
   settle: (bet: number, payout: number) => RoundResult;
-  placeBet: (bet: number, payout?: number) => { success: boolean; error?: string };
+  placeBet: (
+    bet: number,
+    payout?: number,
+    meta?: PendingRoundMeta
+  ) => { success: boolean; error?: string };
   resolveRound: (bet: number, payout: number) => RoundResult;
-  updatePendingRound?: (bet: number, payout?: number) => void;
+  updatePendingRound?: (bet: number, payout?: number, meta?: PendingRoundMeta) => void;
   animations: boolean;
 }
 

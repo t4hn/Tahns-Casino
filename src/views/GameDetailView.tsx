@@ -1,7 +1,6 @@
 import React from 'react';
-import { ArrowLeft, Clock, Shield, Sparkles, Layers, Info } from 'lucide-react';
+import { ArrowLeft, Clock, Shield, Sparkles, Layers } from 'lucide-react';
 import { useCasino } from '../context/CasinoContext';
-import { CurrencyDisplay } from '../components/CurrencyDisplay';
 import { gameRegistry } from '../games/registry';
 import { soundManager } from '../utils/sound';
 
@@ -25,28 +24,17 @@ export const GameDetailView: React.FC = () => {
   if (module?.component) {
     const GameComponent = module.component;
     return (
-      <div className="space-y-3 sm:space-y-4 animate-in fade-in duration-200">
-        <div className="flex items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              exitGame();
-            }}
-            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition-colors py-1.5 px-2.5 -ml-1 rounded-xl hover:bg-slate-800/60 min-h-[40px]"
-          >
-            <ArrowLeft size={16} />
-            <span>Back to Casino Floor</span>
-          </button>
-        </div>
-
+      <div className="animate-in fade-in duration-200">
         <GameComponent
           balance={profile.credits}
           minBet={activeGame.minBet}
           maxBet={activeGame.maxBet}
           settle={(bet, payout) => executeRound(activeGame.id, activeGame.name, bet, payout)}
-          placeBet={(bet, payout) => placeBet(activeGame.id, activeGame.name, bet, payout)}
+          placeBet={(bet, payout, meta) => placeBet(activeGame.id, activeGame.name, bet, payout, meta)}
           resolveRound={(bet, payout) => resolveRound(activeGame.id, activeGame.name, bet, payout)}
-          updatePendingRound={(bet, payout) => updatePendingRound(activeGame.id, activeGame.name, bet, payout)}
+          updatePendingRound={(bet, payout, meta) =>
+            updatePendingRound(activeGame.id, activeGame.name, bet, payout, meta)
+          }
           animations={settings.animations !== false}
         />
       </div>
@@ -56,26 +44,6 @@ export const GameDetailView: React.FC = () => {
   // Clear, polished "Coming Soon" table view when no module is plugged in
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* ── Top Bar with Back Navigation & Live Balance ── */}
-      <div className="flex items-center justify-between gap-4 pb-3 border-b border-slate-800">
-        <button
-          onClick={() => {
-            soundManager.playClick();
-            exitGame();
-          }}
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition-colors py-2 px-3 rounded-xl hover:bg-slate-800/60 min-h-[44px]"
-        >
-          <ArrowLeft size={16} />
-          <span>Back to Casino Floor</span>
-        </button>
-
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-400 uppercase font-mono hidden sm:inline">
-            Patron Balance:
-          </span>
-          <CurrencyDisplay size="md" />
-        </div>
-      </div>
 
       {/* ── Game Hero Showcase ── */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-[#131b26] to-[#0c1118] border border-emerald-500/30 p-5 sm:p-7 shadow-2xl">
